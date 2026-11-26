@@ -1,11 +1,11 @@
 import '@fontsource/instrument-serif/latin-400.css'
 import '@fontsource/instrument-serif/latin-400-italic.css'
 import useEmblaCarousel from 'embla-carousel-react'
-import { ChevronDown, Menu, Sparkles, X } from 'lucide-react'
+import { ChevronDown, Menu, X } from 'lucide-react'
 import {
   motion, MotionConfig,
   useMotionValue, useMotionValueEvent,
-  useReducedMotion, useScroll, useSpring, useTransform,
+  useScroll, useSpring, useTransform,
 } from 'motion/react'
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
@@ -139,9 +139,8 @@ function Portrait() {
 }
 
 /* ── Hero section ────────────────────────────── */
-function Hero({ animated, onMotionChange }: { animated: boolean; onMotionChange: () => void }) {
+function Hero() {
   const heroRef  = useRef<HTMLElement>(null)
-  const [second, setSecond] = useState(false)
   const { scrollYProgress } = useScroll({ target: heroRef, offset: ['start start', 'end start'] })
   const spring   = useSpring(scrollYProgress, { stiffness: 160, damping: 30, restDelta: .001 })
 
@@ -162,16 +161,12 @@ function Hero({ animated, onMotionChange }: { animated: boolean; onMotionChange:
   const tX = useSpring(pX, { stiffness: 200, damping: 22 })
   const tY = useSpring(pY, { stiffness: 200, damping: 22 })
 
-  useMotionValueEvent(scrollYProgress, 'change', v => { if (!animated) setSecond(v >= .33) })
-  useEffect(() => { if (!animated) setSecond(scrollYProgress.get() >= .33) }, [animated, scrollYProgress])
-
   return (
-    <section className="ed-hero" aria-labelledby="ed-title" ref={heroRef}
-      data-second-frame={!animated && second}>
+    <section className="ed-hero" aria-labelledby="ed-title" ref={heroRef}>
       {/* Background glow */}
       <div className="ed-hero-bg" aria-hidden>
         <div className="ed-hero-bg-layer"/>
-        <motion.div className="ed-hero-bg-overlay" style={animated ? { y: glowY } : undefined}/>
+        <motion.div className="ed-hero-bg-overlay" style={{ y: glowY }}/>
       </div>
 
       {/* Main content */}
@@ -179,7 +174,7 @@ function Hero({ animated, onMotionChange }: { animated: boolean; onMotionChange:
         <div className="ed-hero-wrap">
 
           {/* Copy */}
-          <motion.div className="ed-hero-copy" style={animated ? { y: copyY } : undefined}>
+          <motion.div className="ed-hero-copy" style={{ y: copyY }}>
             <div className="ed-hero-eyebrow">
               <p className="ed-kicker">Estudio de belleza</p>
             </div>
@@ -219,7 +214,7 @@ function Hero({ animated, onMotionChange }: { animated: boolean; onMotionChange:
           {/* Visual */}
           <div className="ed-hero-visual"
             onPointerMove={e => {
-              if (!animated || e.pointerType !== 'mouse') return
+              if (e.pointerType !== 'mouse') return
               const b = e.currentTarget.getBoundingClientRect()
               pX.set(((e.clientX - b.left) / b.width - .5) * 16)
               pY.set(((e.clientY - b.top) / b.height - .5) * 11)
@@ -227,20 +222,20 @@ function Hero({ animated, onMotionChange }: { animated: boolean; onMotionChange:
             onPointerLeave={() => { pX.set(0); pY.set(0) }}>
 
             <div className="ed-portrait-wrap">
-              <motion.div className="ed-portrait-mount" style={animated ? { x: tX, y: tY } : undefined}>
+              <motion.div className="ed-portrait-mount" style={{ x: tX, y: tY }}>
                 <div className="ed-portrait-ring" aria-hidden/>
                 <figure className="ed-portrait-frame">
                   <motion.div className="ed-portrait-img"
-                    style={animated ? { y: photoY, scale: photoScale } : undefined}>
+                    style={{ y: photoY, scale: photoScale }}>
                     <Portrait/>
                   </motion.div>
                   <motion.div className="ed-portrait-second"
-                    style={animated ? { opacity: 1, x: revealX } : undefined}
+                    style={{ opacity: 1, x: revealX }}
                     aria-hidden>
                     <motion.img
                       src={IMG + 'ritual-900.webp'} alt=""
                       width="900" height="600" decoding="async"
-                      style={animated ? { x: counterX, scale: secondScale } : undefined}
+                      style={{ x: counterX, scale: secondScale }}
                     />
                   </motion.div>
                 </figure>
@@ -250,7 +245,7 @@ function Hero({ animated, onMotionChange }: { animated: boolean; onMotionChange:
 
               <motion.figure
                 className="ed-inset"
-                style={animated ? { x: insetX, y: insetY, rotate: insetRot } : { rotate: -9 }}>
+                style={{ x: insetX, y: insetY, rotate: insetRot }}>
                 <img src={IMG + 'manos.webp'} width="530" height="630"
                   alt="Manicura en color vino" decoding="async"/>
               </motion.figure>
@@ -264,12 +259,6 @@ function Hero({ animated, onMotionChange }: { animated: boolean; onMotionChange:
             <span><ChevronDown size={16}/></span>
             Sigue la escena
           </a>
-          <button className="ed-motion-toggle" type="button"
-            aria-pressed={animated} onClick={onMotionChange}>
-            <Sparkles size={14}/>
-            Animación completa
-            <span className="ed-toggle-pill" aria-hidden/>
-          </button>
         </div>
       </div>
     </section>
@@ -687,63 +676,41 @@ function Footer({ signedIn }: { signedIn: boolean }) {
 export default function Landing() {
   const root = useRef<HTMLDivElement>(null)
   const { session } = useAuth()
-  const reduced = useReducedMotion()
   const { scrollYProgress } = useScroll()
-
-  const [preference, setPreference] = useState<'full' | 'reduced' | null>(() => {
-    if (new URLSearchParams(window.location.search).get('movimiento') === 'activo') return 'full'
-    try {
-      const saved = sessionStorage.getItem('at-beauty-movement')
-      return saved === 'full' || saved === 'reduced' ? saved : null
-    } catch { return null }
-  })
-
-  const animated = preference ? preference === 'full' : !reduced
-
-  function toggleMotion() {
-    const next = animated ? 'reduced' : 'full'
-    setPreference(next)
-    try { sessionStorage.setItem('at-beauty-movement', next) } catch { /* noop */ }
-    if (new URLSearchParams(window.location.search).has('movimiento')) {
-      const url = new URL(window.location.href)
-      url.searchParams.delete('movimiento')
-      window.history.replaceState(window.history.state, '', url)
-    }
-  }
 
   /* Mount GSAP scroll effects */
   useEffect(() => {
     const el = root.current
-    if (!el || !animated) return
+    if (!el) return
     let alive = true
     let cleanup: (() => void) | undefined
     void import('@/features/landing-scroll')
       .then(m => { if (alive) cleanup = m.mountLandingScroll(el) })
       .catch(() => undefined)
     return () => { alive = false; cleanup?.() }
-  }, [animated])
+  }, [])
 
   return (
-    <MotionConfig reducedMotion={animated ? 'never' : 'always'}>
-      <div className="ed-landing" ref={root} data-motion={animated ? 'full' : 'reduced'}>
+    <MotionConfig reducedMotion="never">
+      <div className="ed-landing" ref={root} data-motion="full">
         <a href="#contenido" className="skip-link">Saltar al contenido</a>
 
         {/* Scroll progress bar */}
         <motion.div className="ed-progress" style={{ scaleX: scrollYProgress }} aria-hidden/>
 
         {/* Desktop cursor glow */}
-        {animated && <CursorGlow/>}
+        <CursorGlow/>
 
         <Header signedIn={!!session}/>
 
         <main id="contenido" tabIndex={-1}>
-          <Hero animated={animated} onMotionChange={toggleMotion}/>
+          <Hero/>
           <Marquee/>
-          <ScrollCarousel animated={animated}/>
-          <VisitScene animated={animated}/>
-          <Bento animated={animated}/>
-          <Services animated={animated}/>
-          <CtaSection animated={animated}/>
+          <ScrollCarousel animated={true}/>
+          <VisitScene animated={true}/>
+          <Bento animated={true}/>
+          <Services animated={true}/>
+          <CtaSection animated={true}/>
         </main>
 
         <Footer signedIn={!!session}/>

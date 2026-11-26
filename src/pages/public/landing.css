@@ -387,14 +387,14 @@
   margin-inline: auto;
   padding-bottom: clamp(20px, 3.5vh, 40px);
 }
-.ed-scroll-cue, .ed-motion-toggle {
+.ed-scroll-cue {
   display: inline-flex; align-items: center; gap: 8px;
   min-height: 44px; font-size: .78rem; font-weight: 650;
   color: rgba(245,237,232,.5);
   cursor: pointer;
   transition: color .2s;
 }
-.ed-scroll-cue:hover, .ed-motion-toggle:hover { color: var(--cream); }
+.ed-scroll-cue:hover { color: var(--cream); }
 .ed-scroll-cue > span {
   display: grid; place-items: center;
   width: 30px; height: 30px;
@@ -404,25 +404,6 @@
 }
 .ed-scroll-cue:hover > span { border-color: var(--gold); transform: translateY(4px); }
 .ed-landing[data-motion="full"] .ed-scroll-cue > span > svg { animation: ed-bounce 2s ease-in-out 3; }
-@keyframes ed-bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(4px)} }
-
-/* Toggle switch */
-.ed-motion-toggle > .ed-toggle-pill {
-  position: relative; display: inline-block;
-  width: 28px; height: 16px;
-  border: 1px solid rgba(245,237,232,.22);
-  border-radius: 14px;
-  background: rgba(255,255,255,.07);
-}
-.ed-motion-toggle > .ed-toggle-pill::after {
-  content: ""; position: absolute;
-  top: 2px; left: 2px;
-  width: 10px; height: 10px;
-  border-radius: 50%; background: rgba(245,237,232,.4);
-  transition: transform .22s ease, background .22s;
-}
-.ed-motion-toggle[aria-pressed="true"] > .ed-toggle-pill { background: var(--wine); border-color: var(--wine); }
-.ed-motion-toggle[aria-pressed="true"] > .ed-toggle-pill::after { background: white; transform: translateX(12px); }
 
 /* Sticky hero (scroll parallax) */
 @media (min-width: 1001px) and (min-height: 720px) {
