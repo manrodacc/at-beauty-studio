@@ -1,0 +1,10 @@
+project_id = "at-beauty-studio"
+
+[auth.email]
+enable_confirmations = false
+
+[functions.crear-colaboradora]
+verify_jwt = true
+
+[functions.enviar-correos]
+verify_jwt = false
