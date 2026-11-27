@@ -68,7 +68,7 @@ function Inicio() {
 }
 
 function Citas() {
-  const [fecha, setFecha] = useState(fechaLimaISO)
+  const [fecha, setFecha] = useState('')
   const [status, setStatus] = useState('')
   const [staff, setStaff] = useState('')
   const [cancel, setCancel] = useState<Cita | null>(null)
@@ -79,7 +79,13 @@ function Citas() {
   const people = [...new Set((query.data ?? []).map(row => row.colaboradora).filter(Boolean))]
   return <><PageTitle title="Citas" description="Supervisa la agenda y las reservas del estudio." action={<div className="button-row"><Button asChild variant="outline"><Link to="/admin/atencion/nueva">Atención sin cita</Link></Button><Button onClick={() => setCreate(true)}><Plus size={17}/> Nueva cita</Button></div>}/>
     <section className="panel form-row">
-      <Field label="Fecha"><input type="date" value={fecha} onChange={event => setFecha(event.target.value)}/></Field>
+      <Field label="Fecha">
+        <div className="button-row">
+          <input type="date" value={fecha} onChange={event => setFecha(event.target.value)}/>
+          {fecha && <Button variant="ghost" type="button" onClick={() => setFecha('')}>Ver todas</Button>}
+          {!fecha && <Button variant="outline" type="button" onClick={() => setFecha(fechaLimaISO())}>Hoy</Button>}
+        </div>
+      </Field>
       <Field label="Estado"><select value={status} onChange={event => setStatus(event.target.value)}><option value="">Todos</option><option value="confirmada">Confirmada</option><option value="pendiente">Pendiente</option><option value="realizada">Realizada</option><option value="cancelada">Cancelada</option></select></Field>
       <Field label="Colaboradora"><select value={staff} onChange={event => setStaff(event.target.value)}><option value="">Todas</option>{people.map(person => <option key={person}>{person}</option>)}</select></Field>
     </section>
