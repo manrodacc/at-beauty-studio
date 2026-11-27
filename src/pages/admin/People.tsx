@@ -8,7 +8,7 @@ import { formValues, requiredText, useOperation, validate } from '@/features/ope
 import { AppError, obtener } from '@/lib/errors'
 import { rpc } from '@/lib/rpc'
 import { supabase } from '@/lib/supabase'
-import type { BloqueHorario, Colaboradora, Role } from '@/types/database.generated'
+import type { BloqueHorario, Colaboradora, Role } from '@/types/database'
 import { readScheduleTime, ScheduleTime } from './ScheduleTime'
 
 const weekdays = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
@@ -124,7 +124,7 @@ function TeamFields({ staff, close, services, assigned, schedule, correo }: { st
       p_horarios: horarios,
       p_estado: values.estado,
     })
-  }, staff?.id_usuario ? 'Colaboradora actualizada' : 'Colaboradora guardada', ['colaboradoras', 'colaboradoras-servicio', 'horarios', 'asistencia', 'reportes', 'usuarios'], close)
+  }, staff?.id_usuario ? 'Colaboradora actualizada' : 'Colaboradora guardada', ['colaboradoras', 'colaboradoras-servicio', 'horarios', 'asistencia', 'reportes', 'usuarios', 'clientes'], close)
   return <form className="form-stack" onSubmit={event => { event.preventDefault(); if (!save.isPending) save.mutate(formValues(event.currentTarget)) }}>
     {staff && !staff.id_usuario && <p className="notice">Esta ficha aún no tiene una cuenta vinculada.</p>}
     <div className="form-row"><Field label="Nombres"><input name="nombres" defaultValue={staff?.nombres} required/></Field><Field label="Apellidos"><input name="apellidos" defaultValue={staff?.apellidos ?? ''}/></Field></div>
@@ -163,7 +163,7 @@ export function Configuracion() {
   const users = useQuery({ queryKey: ['usuarios'], queryFn: async () => obtener(await supabase.from('profiles').select('id,nombres,apellidos,correo,rol,estado').order('nombres')) ?? [] })
   const update = useOperation(async ({ clave, valor, minimo }: { clave: string; valor: FormDataEntryValue | undefined; minimo: number }) => {
     const next = validate(z.coerce.number().int().min(minimo).max(1440), valor)
-    return obtener(await supabase.from('configuracion').update({ valor: next }).eq('clave', clave))
+    return obtener(await supabase.from('configuracion').update({ valor: String(next) }).eq('clave', clave))
   }, 'Configuración guardada', ['configuracion', 'citas', 'horarios'])
   return <><PageTitle title="Configuración" description="Administra las reglas del estudio y los permisos de acceso."/>
     <section className="panel form-stack"><h2 className="panel-heading">Reglas del estudio</h2>

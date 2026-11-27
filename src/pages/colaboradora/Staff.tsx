@@ -6,6 +6,9 @@ import { z } from 'zod'
 import { Button, DataList, Empty, Failure, Field, Modal, PageTitle, Skeleton } from '@/components/ui'
 import { CancelarCita, CitaCard, pendiente, useCitas } from '@/features/citas'
 import { useCatalogo } from '@/features/catalogo'
+import { CategoriasProducto } from '@/features/categorias-producto'
+import { ClientPicker, useClientes } from '@/features/clientes'
+import { useCategoriasProducto, useProductos } from '@/features/inventario'
 import { currencyAmount, formValues, numericId, optionalText, pagoMethods, quantity, requiredText, useOperation, validate } from '@/features/operations'
 import { AppError, obtener } from '@/lib/errors'
 import { fechaLimaISO, formatFecha, formatFechaHora, formatHora, horaRegistro, sumarDias } from '@/lib/fechas'
@@ -13,7 +16,8 @@ import { rpc } from '@/lib/rpc'
 import { supabase } from '@/lib/supabase'
 import { formatSoles } from '@/lib/utils'
 import { useAuth } from '@/providers/AuthProvider'
-import type { Cita, MetodoPago, Producto } from '@/types/database.generated'
+import type { Cita, MetodoPago, Producto } from '@/types/database'
+import { esCita } from '@/types/database'
 import { BookingForm } from '@/pages/cliente/Booking'
 
 type StaffPage = 'agenda' | 'atencion' | 'pagos' | 'asistencia' | 'inventario'
@@ -49,7 +53,6 @@ const attentionSchema = z.object({
   duracion: z.coerce.number().int().positive('Indica una duración mayor que cero.').max(1440),
   total: currencyAmount, observaciones: optionalText,
 })
-const useProductos = () => useQuery({ queryKey: ['productos'], queryFn: async () => obtener(await supabase.from('productos').select('*').order('nombre')) ?? [] })
 
 function Atencion() {
   const { cita: routeId } = useParams()
@@ -62,12 +65,13 @@ function Atencion() {
   const catalog = useCatalogo()
   const details = useQuery({
     queryKey: ['citas', 'atencion', routeId], enabled: !walkIn && /^\d+$/.test(routeId ?? ''),
-    queryFn: async () => obtener(await supabase.from('citas_detalle').select('*').eq('id', Number(routeId)).maybeSingle()),
+    queryFn: async () => {
+      const row = obtener(await supabase.from('citas_detalle').select('*').eq('id', Number(routeId)).maybeSingle())
+      return row && esCita(row) ? row : null
+    },
   })
-  const clients = useQuery({
-    queryKey: ['clientes', 'atencion'], enabled: walkIn,
-    queryFn: async () => obtener(await supabase.from('clientes').select('id,nombres,apellidos').order('nombres')) ?? [],
-  })
+  const clients = useClientes(walkIn)
+  const [client, setClient] = useState<number>()
   const [service, setService] = useState(0)
   const staff = useQuery({
     queryKey: ['colaboradoras-servicio', service], enabled: walkIn && admin && !!service,
@@ -113,11 +117,10 @@ function Atencion() {
 
   return <><PageTitle title={walkIn ? 'Atención sin cita' : 'Registrar atención'} description={details.data ? details.data.cliente + ' · ' + details.data.servicio + ' · ' + formatFechaHora(details.data.inicio) : 'Elige a la clienta y registra el servicio realizado.'}/>
     <form className="panel form-stack" onSubmit={event => { event.preventDefault(); if (!mutation.isPending) mutation.mutate(formValues(event.currentTarget)) }}>
-      {walkIn && <div className="form-row">
-        <Field label="Clienta"><select name="cliente" required><option value="">Selecciona</option>{clients.data?.map(item => <option value={item.id} key={item.id}>{item.nombres} {item.apellidos}</option>)}</select></Field>
+      {walkIn && <><ClientPicker clients={clients.data ?? []} value={client} onChange={setClient} disabled={mutation.isPending}/><div className="form-row">
         <Field label="Servicio"><select name="servicio" required value={service || ''} onChange={event => setService(Number(event.target.value))}><option value="">Selecciona</option>{catalog.data?.map(item => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select></Field>
         {admin && <Field label="Colaboradora"><select name="colaboradora" required key={service}><option value="">Selecciona</option>{staff.data?.map(item => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select></Field>}
-      </div>}
+      </div></>}
       <div className="form-row" key={service || details.data?.id}>
         <Field label="Duración real (min)"><input name="duracion" type="number" min="1" max="1440" defaultValue={details.data?.duracion_min ?? selectedService?.duracion_min} required/></Field>
         <Field label="Total en soles"><input name="total" type="number" min="0" step=".01" defaultValue={details.data?.precio ?? selectedService?.precio} required/></Field>
@@ -243,42 +246,50 @@ function Asistencia({ admin }: { admin?: boolean }) {
   </>
 }
 
-const productSchema = z.object({ nombre: requiredText, categoria: requiredText, unidad: requiredText, stock_minimo: quantity, costo_unitario: currencyAmount, estado: z.enum(['on']).optional().transform(Boolean) })
+const productSchema = z.object({ nombre: requiredText, id_categoria: numericId, unidad: requiredText, stock_minimo: quantity, costo_unitario: currencyAmount, estado: z.enum(['on']).optional().transform(Boolean) })
 const stockSchema = z.object({ cantidad: quantity.refine(value => value > 0, 'Indica una cantidad mayor que cero.'), motivo: optionalText })
 
 function Inventario({ admin }: { admin?: boolean }) {
+  const { profile } = useAuth()
+  const canManage = !!admin && profile?.rol === 'admin'
   const query = useProductos()
+  const categories = useCategoriasProducto()
   const [search, setSearch] = useState('')
+  const [category, setCategory] = useState('')
+  const [showCategories, setShowCategories] = useState(false)
   const [edit, setEdit] = useState<Producto | 'new' | null>(null)
   const [stock, setStock] = useState<Producto | null>(null)
-  const rows = (query.data ?? []).filter(row => (admin || row.estado) && [row.nombre, row.categoria].some(value => value.toLowerCase().includes(search.trim().toLowerCase())))
-  return <><PageTitle title="Inventario" description="Consulta las existencias y los productos bajo el mínimo." action={admin && <Button onClick={() => setEdit('new')}><Plus size={17}/> Nuevo producto</Button>}/>
-    <section className="panel"><Field label="Buscar productos"><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Nombre o categoría"/></Field></section>
+  const rows = (query.data ?? []).filter(row => (canManage || row.estado) && (!category || row.id_categoria === Number(category)) && [row.nombre, row.categorias_producto?.nombre ?? ''].some(value => value.toLowerCase().includes(search.trim().toLowerCase())))
+  return <><PageTitle title="Inventario" description="Consulta las existencias y los productos bajo el mínimo." action={canManage && <div className="button-row"><Button variant="outline" aria-expanded={showCategories} aria-controls="categorias-producto" onClick={() => setShowCategories(value => !value)}>Categorías de producto</Button><Button onClick={() => setEdit('new')}><Plus size={17}/> Nuevo producto</Button></div>}/>
+    {canManage && showCategories && <CategoriasProducto/>}
+    <section className="panel form-stack"><div className="form-row"><Field label="Buscar productos"><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Nombre o categoría"/></Field><Field label="Filtrar por categoría de producto"><select value={category} disabled={categories.isPending} onChange={event => setCategory(event.target.value)}><option value="">Todas las categorías</option>{categories.data?.map(item => <option key={item.id} value={item.id}>{item.nombre}{!item.estado && ' (inactiva)'}</option>)}</select></Field></div>{categories.isError && <Failure error={categories.error} retry={() => void categories.refetch()}/>}</section>
     {query.isPending ? <Skeleton/> : query.isError ? <Failure error={query.error} retry={() => void query.refetch()}/> : !rows.length ? <section className="panel"><Empty title="No hay productos para mostrar"/></section> :
       <div className="appointment-grid">{rows.map(row => <article className="panel stock-card" key={row.id}>
         <div className="appointment-heading"><span className="soft-icon"><Package size={21}/></span><span className={'status-badge ' + (!row.estado ? 'cancelada' : row.stock_actual < row.stock_minimo ? 'pendiente' : 'confirmada')}>{!row.estado ? 'Inactivo' : row.stock_actual < row.stock_minimo ? 'Stock bajo' : 'Disponible'}</span></div>
-        <h2>{row.nombre}</h2><p className="muted">{row.categoria}</p>
+        <h2>{row.nombre}</h2><p className="muted">{row.categorias_producto?.nombre ?? '—'}</p>
         <meter aria-label={'Stock de ' + row.nombre} min={0} max={Math.max(row.stock_minimo * 2, row.stock_actual, 1)} low={row.stock_minimo} optimum={Math.max(row.stock_minimo * 2, row.stock_actual, 1)} value={row.stock_actual}/>
         <p><strong>{row.stock_actual} {row.unidad}</strong> <span className="muted">· Mín. {row.stock_minimo}</span></p>
-        {admin && <div className="button-row"><Button variant="outline" onClick={() => setEdit(row)}>Editar</Button><Button variant="ghost" disabled={!row.estado} onClick={() => setStock(row)}>Registrar entrada</Button></div>}
+        {canManage && <div className="button-row"><Button variant="outline" onClick={() => setEdit(row)}>Editar</Button><Button variant="ghost" disabled={!row.estado} onClick={() => setStock(row)}>Registrar entrada</Button></div>}
       </article>)}</div>}
-    <Modal title={edit === 'new' ? 'Nuevo producto' : 'Editar producto'} open={!!edit} onOpenChange={open => { if (!open) setEdit(null) }}>{edit && <ProductForm item={edit === 'new' ? undefined : edit} close={() => setEdit(null)}/>}</Modal>
-    <Modal title="Registrar entrada" open={!!stock} onOpenChange={open => { if (!open) setStock(null) }}>{stock && <StockForm item={stock} close={() => setStock(null)}/>}</Modal>
+    {canManage && <><Modal title={edit === 'new' ? 'Nuevo producto' : 'Editar producto'} open={!!edit} onOpenChange={open => { if (!open) setEdit(null) }}>{edit && <ProductForm item={edit === 'new' ? undefined : edit} close={() => setEdit(null)}/>}</Modal>
+    <Modal title="Registrar entrada" open={!!stock} onOpenChange={open => { if (!open) setStock(null) }}>{stock && <StockForm item={stock} close={() => setStock(null)}/>}</Modal></>}
   </>
 }
 
 function ProductForm({ item, close }: { item?: Producto; close: () => void }) {
+  const categories = useCategoriasProducto()
   const mutation = useOperation(async (input: Record<string, FormDataEntryValue>) => {
     const values = validate(productSchema, input)
-    return obtener(await (item ? supabase.from('productos').update(values).eq('id', item.id) : supabase.from('productos').insert(values)))
+    return obtener(await (item ? supabase.from('productos').update(values).eq('id', item.id) : supabase.from('productos').insert(values)).select('id').single(), 'productos')
   }, 'Producto guardado', reportsKeys, close)
   const submit = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); if (!mutation.isPending) mutation.mutate(formValues(event.currentTarget)) }
   return <form className="form-stack" onSubmit={submit}>
     <Field label="Nombre"><input name="nombre" required defaultValue={item?.nombre}/></Field>
-    <div className="form-row"><Field label="Categoría"><input name="categoria" required defaultValue={item?.categoria}/></Field><Field label="Unidad"><input name="unidad" required defaultValue={item?.unidad}/></Field></div>
+    <div className="form-row"><Field label="Categoría de producto"><select name="id_categoria" required disabled={!categories.isSuccess} defaultValue={item?.id_categoria ?? ''}><option value="">Selecciona una categoría</option>{categories.data?.map(category => <option key={category.id} value={category.id}>{category.nombre}{!category.estado && ' (inactiva)'}</option>)}</select></Field><Field label="Unidad"><input name="unidad" required defaultValue={item?.unidad}/></Field></div>
+    {categories.isPending ? <p role="status">Cargando categorías…</p> : categories.isError ? <Failure error={categories.error} retry={() => void categories.refetch()}/> : !categories.data.length && <p>Crea primero una categoría desde «Categorías de producto» en Inventario.</p>}
     <div className="form-row"><Field label="Stock mínimo"><input name="stock_minimo" type="number" min="0" step=".001" required defaultValue={item?.stock_minimo ?? 0}/></Field><Field label="Costo unitario en soles"><input name="costo_unitario" type="number" min="0" step=".01" required defaultValue={item?.costo_unitario ?? 0}/></Field></div>
     <label className="check-field"><input name="estado" type="checkbox" defaultChecked={item?.estado ?? true}/> Producto activo</label>
-    {mutation.error && <Failure error={mutation.error}/>}<Button disabled={mutation.isPending} type="submit">Guardar producto</Button>
+    {mutation.error && <Failure error={mutation.error}/>}<Button disabled={mutation.isPending || !categories.isSuccess || !categories.data.length} type="submit">Guardar producto</Button>
   </form>
 }
 

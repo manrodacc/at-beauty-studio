@@ -9,22 +9,19 @@ import {
 } from 'motion/react'
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { Failure, Skeleton } from '@/components/ui'
-import { servicePhoto, useCatalogo } from '@/features/catalogo'
+import { Empty, Failure, Skeleton } from '@/components/ui'
+import { servicePhoto, useCatalogoCategorias } from '@/features/catalogo'
 import { duracion, formatSoles } from '@/lib/utils'
 import { useAuth } from '@/providers/AuthProvider'
 import './landing.css'
 
 const IMG = '/img/editorial/'
 const RESERVATION = '/app/agendar'
-
-const CATEGORIES = [
-  { name: 'Pestañas',      photo: 'pestanas',   alt: 'Detalle de pestañas rizadas con el ojo cerrado',          heading: 'Una mirada\nmás definida.' },
-  { name: 'Uñas',          photo: 'unas',        alt: 'Manicura color cereza oscuro sobre tela color vino',      heading: 'Color hasta\nlas puntas.'   },
-  { name: 'Cejas',         photo: 'cejas',       alt: 'Detalle de una ceja perfilada',                           heading: 'La forma de\ntu mirada.'    },
-  { name: 'Cuidado facial',photo: 'facial',      alt: 'Aplicación de una mascarilla facial',                     heading: 'Un respiro\npara tu piel.'  },
-  { name: 'Depilación',    photo: 'depilacion',  alt: 'Cera color miel en un cuenco con una espátula de madera', heading: 'Cuidado para\ncada zona.'   },
-] as const
+type CategorySelection = { id: number; request: number }
+const categoryPhoto = (category: { nombre: string; imagen_url: string | null }) => {
+  const photos: Record<string, string> = { 'pestañas': 'pestanas', 'uñas': 'unas', cejas: 'cejas', 'cuidado facial': 'facial', depilación: 'depilacion' }
+  return category.imagen_url || IMG + (photos[category.nombre.toLocaleLowerCase('es')] ?? 'facial') + '.webp'
+}
 
 const CHAPTERS = [
   { title: 'Elige tu servicio',      description: 'Compara precios y duración para encontrar el que mejor se adapta a tu día.' },
@@ -84,11 +81,11 @@ function Header({ signedIn }: { signedIn: boolean }) {
         <nav id={navId} className="ed-nav-links" aria-label="Navegación principal" data-open={menu}>
           <a href="#servicios" onClick={() => setMenu(false)}>Servicios</a>
           <a href="#tu-visita" onClick={() => setMenu(false)}>Tu visita</a>
-          <Link className="ed-mobile-cta" to={RESERVATION} onClick={() => setMenu(false)}>Reservar cita</Link>
+          <a className="ed-mobile-cta" href="#servicios" onClick={() => setMenu(false)}>Reservar cita</a>
         </nav>
         <div className="ed-nav-actions">
           <Link className="ed-nav-ghost" to={signedIn ? '/app' : '/login'}>{signedIn ? 'Mi cuenta' : 'Ingresar'}</Link>
-          <Link className="ed-nav-cta" to={RESERVATION}>Reservar cita</Link>
+          <a className="ed-nav-cta" href="#servicios">Reservar cita</a>
           <button ref={menuBtn} className="ed-menu" type="button"
             aria-label={menu ? 'Cerrar menú' : 'Abrir menú'}
             aria-expanded={menu} aria-controls={navId}
@@ -156,7 +153,7 @@ function Hero() {
   const glowY       = useTransform(spring, [0, .8], [0, -140])
   const copyY       = useTransform(spring, [0, 1], [0, 40])
 
-  /* Pointer tilt */
+  /* Pointer parallax */
   const pX = useMotionValue(0); const pY = useMotionValue(0)
   const tX = useSpring(pX, { stiffness: 200, damping: 22 })
   const tY = useSpring(pY, { stiffness: 200, damping: 22 })
@@ -191,7 +188,7 @@ function Hero() {
             </p>
 
             <div className="ed-hero-actions">
-              <Link className="ed-button" to={RESERVATION}>Reservar una cita</Link>
+              <a className="ed-button" href="#servicios">Reservar una cita</a>
               <a className="ed-underline" href="#servicios">Ver servicios</a>
             </div>
 
@@ -213,11 +210,11 @@ function Hero() {
 
           {/* Visual */}
           <div className="ed-hero-visual"
-            onPointerMove={e => {
-              if (e.pointerType !== 'mouse') return
-              const b = e.currentTarget.getBoundingClientRect()
-              pX.set(((e.clientX - b.left) / b.width - .5) * 16)
-              pY.set(((e.clientY - b.top) / b.height - .5) * 11)
+            onPointerMove={event => {
+              if (event.pointerType !== 'mouse') return
+              const bounds = event.currentTarget.getBoundingClientRect()
+              pX.set(((event.clientX - bounds.left) / bounds.width - .5) * 16)
+              pY.set(((event.clientY - bounds.top) / bounds.height - .5) * 11)
             }}
             onPointerLeave={() => { pX.set(0); pY.set(0) }}>
 
@@ -293,8 +290,9 @@ function ServiceThumb({ id }: { id: number }) {
 }
 
 /* ── Services section ────────────────────────── */
-function Services({ animated }: { animated: boolean }) {
-  const { data: services = [], isPending, error, refetch } = useCatalogo()
+function Services({ animated, categorySelection }: { animated: boolean; categorySelection: CategorySelection | null }) {
+  const { session } = useAuth()
+  const { data: categories = [], isPending, error, refetch } = useCatalogoCategorias()
   const [viewport, carousel] = useEmblaCarousel({ align: 'start', duration: 24, watchFocus: false })
   const [selected, setSelected] = useState(0)
   const groupId = useId()
@@ -307,6 +305,12 @@ function Services({ animated }: { animated: boolean }) {
     return () => { carousel.off('select', update).off('reInit', update) }
   }, [carousel])
 
+  useEffect(() => {
+    if (!carousel || !categorySelection) return
+    const index = categories.findIndex(category => category.id === categorySelection.id)
+    if (index >= 0) carousel.scrollTo(index, true)
+  }, [carousel, categories, categorySelection])
+
   const selectCategory = (index: number) => {
     if (carousel) carousel.scrollTo(index, !animated)
   }
@@ -317,11 +321,12 @@ function Services({ animated }: { animated: boolean }) {
         <SectionHeading id="ed-services-title" label="Servicios" animated={animated}>
           Elige lo que <em>quieres cuidar.</em>
         </SectionHeading>
+        {isPending ? <Skeleton/> : error ? <Failure error={error} retry={() => void refetch()}/> : !categories.length && <Empty title="Aún no hay servicios disponibles"/>}
 
         {/* Tabs */}
         <div className="ed-tabs" aria-label="Categorías de servicios">
-          {CATEGORIES.map(({ name }, index) => (
-            <button key={name} type="button" className="ed-tab"
+          {categories.map((category, index) => (
+            <button key={category.id} type="button" className="ed-tab"
               aria-pressed={selected === index}
               aria-controls={groupId}
               onClick={() => selectCategory(index)}>
@@ -331,7 +336,7 @@ function Services({ animated }: { animated: boolean }) {
                   transition={{ type: 'spring', stiffness: 380, damping: 30 }}
                   aria-hidden/>
               )}
-              <span>{name}</span>
+              <span>{category.nombre}</span>
             </button>
           ))}
         </div>
@@ -340,26 +345,23 @@ function Services({ animated }: { animated: boolean }) {
         <div className="ed-catalog-window" id={groupId} ref={viewport}
           role="region" aria-label="Servicios, precios y duración">
           <div className="ed-catalog-track">
-            {CATEGORIES.map(({ name, photo, alt, heading }, index) => {
-              const items = services.filter(s => s.categoria === name)
+            {categories.map((category, index) => {
+              const items = category.servicios
               return (
-                <motion.article key={name} className="ed-catalog-slide"
-                  aria-label={name} inert={selected !== index}
+                <motion.article key={category.id} className="ed-catalog-slide"
+                  aria-label={category.nombre} inert={selected !== index}
                   initial={animated ? { opacity: 0 } : false}
                   whileInView={{ opacity: 1 }}
                   viewport={{ once: true, amount: .1 }}
                   transition={{ duration: .6 }}>
                   <div className="ed-catalog-photo">
-                    <img src={IMG + photo + '.webp'} alt={alt}
-                      width="590" height="570" loading="lazy" decoding="async"/>
+                    <img src={categoryPhoto(category)} alt={category.nombre}
+                      width="590" height="570" loading="lazy" decoding="async"
+                      onError={event => { if (event.currentTarget.getAttribute('src') !== IMG + 'facial.webp') event.currentTarget.src = IMG + 'facial.webp' }}/>
                   </div>
                   <div className="ed-catalog-details">
-                    <h3>{heading.split('\n').map((line, i) => <span key={i}>{line}<br/></span>)}</h3>
-                    {isPending ? <Skeleton/>
-                      : error ? <Failure error={error} retry={() => void refetch()}/>
-                      : !items.length
-                        ? <p>Por ahora no hay servicios en esta categoría.</p>
-                        : (
+                    <h3>{category.nombre}</h3>
+                    {category.descripcion && <p className="ed-service-desc">{category.descripcion}</p>}
                           <ul className="ed-service-list">
                             {items.map(item => (
                               <li key={item.id} className="ed-service-item">
@@ -369,11 +371,11 @@ function Services({ animated }: { animated: boolean }) {
                                     <h4>{item.nombre}</h4>
                                     <strong>{formatSoles(item.precio)}</strong>
                                   </div>
-                                  {item.descripcion && <p className="ed-service-desc">{item.descripcion}</p>}
                                   <div className="ed-service-foot">
                                     <span>{duracion(item.duracion_min)}</span>
                                     <Link className="ed-underline"
-                                      to={RESERVATION + '?servicio=' + item.id}
+                                      to={session ? RESERVATION + '?servicio=' + item.id : '/registro?servicio=' + item.id}
+                                      state={{ from: RESERVATION + '?servicio=' + item.id }}
                                       aria-label={'Reservar ' + item.nombre}>
                                       Reservar
                                     </Link>
@@ -382,8 +384,6 @@ function Services({ animated }: { animated: boolean }) {
                               </li>
                             ))}
                           </ul>
-                        )
-                    }
                   </div>
                 </motion.article>
               )
@@ -402,7 +402,7 @@ function Bento({ animated }: { animated: boolean }) {
     { cls: 'ed-bento-cell-b', kicker: 'Seguimiento',       title: <>Tu historial,<br/><em>siempre contigo.</em></>, body: 'Consulta tus citas pasadas y próximas desde tu cuenta.', icon: '◎' },
     { cls: 'ed-bento-cell-c', kicker: 'Puntualidad',       title: <>Sin<br/><em>esperas.</em></>, body: 'Confirmación inmediata.', icon: '◷' },
     { cls: 'ed-bento-cell-d', kicker: 'Equipo',            title: <>Especialistas<br/><em>certificadas.</em></>, body: 'Cada técnica, formada en su área.', icon: '♡' },
-    { cls: 'ed-bento-cell-e', kicker: 'Variedad',          title: <>5 categorías,<br/><em>infinitas opciones.</em></>, body: 'Pestañas, cejas, uñas, facial y depilación. Todo en un solo estudio.', icon: '✿' },
+    { cls: 'ed-bento-cell-e', kicker: 'Variedad',          title: <>Mucho por cuidar,<br/><em>infinitas opciones.</em></>, body: 'Explora nuestro catálogo y encuentra tu próximo cuidado. Todo en un solo estudio.', icon: '✿' },
   ]
 
   return (
@@ -426,7 +426,16 @@ function Bento({ animated }: { animated: boolean }) {
 }
 
 /* ── Scroll-driven horizontal carousel ──────────── */
-function ScrollCarousel({ animated }: { animated: boolean }) {
+function ScrollCarousel({ animated, onReserveCategory }: { animated: boolean; onReserveCategory: (id: number) => void }) {
+  const { data: categories = [] } = useCatalogoCategorias()
+  if (!categories.length) return null
+
+  // Montar el seguimiento del scroll cuando su sección ya puede renderizarse.
+  // Si cambia el número o el orden de las categorías, medir el nuevo recorrido.
+  return <ScrollCarouselContent key={categories.map(category => category.id).join(':')} animated={animated} categories={categories} onReserveCategory={onReserveCategory}/>
+}
+
+function ScrollCarouselContent({ animated, categories, onReserveCategory }: { animated: boolean; categories: NonNullable<ReturnType<typeof useCatalogoCategorias>['data']>; onReserveCategory: (id: number) => void }) {
   const outerRef  = useRef<HTMLElement>(null)
   const trackRef  = useRef<HTMLDivElement>(null)
   const [active, setActive] = useState(0)
@@ -440,8 +449,8 @@ function ScrollCarousel({ animated }: { animated: boolean }) {
   const smooth = useSpring(scrollYProgress, { stiffness: 80, damping: 22, restDelta: .0005 })
 
   /* How many extra slides beyond first */
-  const count = CATEGORIES.length          // 5
-  const extra = count - 1                  // 4
+  const count = categories.length
+  const extra = Math.max(0, count - 1)
 
   /* Translate the track in %: each slide = 100vw */
   const xPct = useTransform(smooth, [0, 1], ['0%', `-${extra * 100}%`])
@@ -451,8 +460,12 @@ function ScrollCarousel({ animated }: { animated: boolean }) {
     setActive(Math.min(extra, Math.round(v * extra)))
   })
 
-  /* Parallax depth per slide — each image slightly shifts */
-  const imgParallax = useTransform(smooth, [0, 1], ['0%', `${extra * 8}%`])
+  const scrollToCategory = (index: number) => {
+    const section = outerRef.current
+    if (!section) return
+    const bounds = section.getBoundingClientRect()
+    window.scrollTo({ top: window.scrollY + bounds.top + (bounds.height - window.innerHeight) * (extra ? index / extra : 0), behavior: 'smooth' })
+  }
 
   return (
     <section
@@ -467,7 +480,7 @@ function ScrollCarousel({ animated }: { animated: boolean }) {
 
         {/* Top label */}
         <div className="ed-sc-header">
-          <p className="ed-kicker">Nuestros servicios</p>
+          <p className="ed-kicker">Encuentra tu próximo cuidado</p>
           <span className="ed-sc-counter" aria-live="polite" aria-atomic>
             <em>{String(active + 1).padStart(2, '0')}</em>
             <span>/</span>
@@ -482,56 +495,62 @@ function ScrollCarousel({ animated }: { animated: boolean }) {
           style={animated ? { x: xPct } : undefined}
           aria-label="Diapositivas de servicios"
         >
-          {CATEGORIES.map(({ name, photo, alt, heading }, i) => (
+          {categories.map((category, i) => (
             <div
-              key={name}
+              key={category.id}
               className="ed-sc-slide"
-              aria-label={`${i + 1} de ${count}: ${name}`}
+              aria-label={`${i + 1} de ${count}: ${category.nombre}`}
               data-active={active === i}
+              inert={active !== i}
             >
-              {/* Full-bleed image */}
+              <div className="ed-sc-card">
               <div className="ed-sc-img-wrap">
-                <motion.img
-                  src={`${IMG}${photo}.webp`}
-                  alt={alt}
+                <img
+                  src={categoryPhoto(category)}
+                  alt={category.nombre}
                   width="1280" height="853"
                   loading={i === 0 ? 'eager' : 'lazy'}
                   decoding="async"
                   className="ed-sc-img"
-                  style={animated ? { x: imgParallax } : undefined}
+                  onError={event => { if (event.currentTarget.getAttribute('src') !== IMG + 'facial.webp') event.currentTarget.src = IMG + 'facial.webp' }}
                 />
-                <div className="ed-sc-img-overlay" aria-hidden/>
               </div>
 
               {/* Slide copy */}
               <div className="ed-sc-copy">
                 <p className="ed-sc-index" aria-hidden>{String(i + 1).padStart(2, '0')}</p>
-                <h2 className="ed-sc-heading">{heading.split('\n').join(' ')}</h2>
-                <p className="ed-sc-name">{name}</p>
-                <Link
+                <p className="ed-sc-label">Un momento para ti</p>
+                <h2 className="ed-sc-heading">{category.nombre}</h2>
+                <p className="ed-sc-name">{category.descripcion}</p>
+                <p className="ed-sc-count">{category.servicios.length} {category.servicios.length === 1 ? 'servicio para descubrir' : 'servicios para descubrir'}</p>
+                <button
+                  type="button"
                   className="ed-sc-cta"
-                  to={RESERVATION}
+                  aria-label={'Reservar ' + category.nombre}
+                  onClick={() => onReserveCategory(category.id)}
                   tabIndex={active === i ? 0 : -1}
                 >
                   Reservar
                   <span aria-hidden>→</span>
-                </Link>
+                </button>
+                <p className="ed-sc-note">Elige primero tu servicio y después crea tu cuenta.</p>
+              </div>
               </div>
             </div>
           ))}
         </motion.div>
 
         {/* ── Progress dots ─────────────────── */}
-        <div className="ed-sc-dots" role="tablist" aria-label="Ir a diapositiva">
-          {CATEGORIES.map(({ name }, i) => (
+        <div className="ed-sc-dots" aria-label="Ir a categoría">
+          {categories.map((category, i) => (
             <button
-              key={name}
+              key={category.id}
               type="button"
-              role="tab"
-              aria-selected={active === i}
-              aria-label={name}
+              aria-pressed={active === i}
+              aria-label={category.nombre}
               className="ed-sc-dot"
               data-active={active === i}
+              onClick={() => scrollToCategory(i)}
             />
           ))}
         </div>
@@ -646,7 +665,7 @@ function CtaSection({ animated }: { animated: boolean }) {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, amount: .3 }}
           transition={{ duration: .7, delay: .18, ease: [.22, .76, .22, 1] }}>
-          <Link className="ed-button" to={RESERVATION}>Ver horarios disponibles</Link>
+          <a className="ed-button" href="#servicios">Elegir mi servicio</a>
         </motion.div>
       </div>
     </section>
@@ -677,6 +696,11 @@ export default function Landing() {
   const root = useRef<HTMLDivElement>(null)
   const { session } = useAuth()
   const { scrollYProgress } = useScroll()
+  const [categorySelection, setCategorySelection] = useState<CategorySelection | null>(null)
+  const reserveCategory = (id: number) => {
+    setCategorySelection({ id, request: Date.now() })
+    document.getElementById('servicios')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   /* Mount GSAP scroll effects */
   useEffect(() => {
@@ -706,10 +730,10 @@ export default function Landing() {
         <main id="contenido" tabIndex={-1}>
           <Hero/>
           <Marquee/>
-          <ScrollCarousel animated={true}/>
+          <ScrollCarousel animated={true} onReserveCategory={reserveCategory}/>
           <VisitScene animated={true}/>
           <Bento animated={true}/>
-          <Services animated={true}/>
+          <Services animated={true} categorySelection={categorySelection}/>
           <CtaSection animated={true}/>
         </main>
 

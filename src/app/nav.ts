@@ -1,5 +1,5 @@
-import { Bell, CalendarCheck2, CalendarDays, ChartNoAxesCombined, ClipboardList, Clock3, CreditCard, House, Package, Receipt, Settings, Sparkles, UserRound, Users } from 'lucide-react'
-import type { Role } from '@/types/database.generated'
+import { Bell, CalendarCheck2, CalendarDays, ChartNoAxesCombined, ClipboardList, Clock3, CreditCard, House, Layers, Package, Receipt, Settings, Sparkles, UserRound, Users } from 'lucide-react'
+import type { Role } from '@/types/database'
 
 export const homeFor = (role: Role) => ({ admin: '/admin/inicio', colaboradora: '/app/agenda', cliente: '/app/inicio' })[role]
 
@@ -23,6 +23,7 @@ export const navigation = {
     { path: '/admin/citas', label: 'Citas', icon: CalendarDays },
     { path: '/admin/clientes', label: 'Clientes', icon: Users },
     { path: '/admin/colaboradoras', label: 'Colaboradoras', icon: UserRound },
+    { path: '/admin/categorias', label: 'Categorías', icon: Layers },
     { path: '/admin/servicios', label: 'Servicios', icon: Sparkles },
     { path: '/admin/inventario', label: 'Inventario', icon: Package },
     { path: '/admin/pagos', label: 'Pagos', icon: CreditCard },

@@ -6,13 +6,14 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button, Empty, Failure, Field, PageTitle, Skeleton } from '@/components/ui'
 import { Countdown } from '@/features/citas'
-import { useCatalogo } from '@/features/catalogo'
+import { useCatalogoCategorias } from '@/features/catalogo'
+import { useClientes } from '@/features/clientes'
 import { AppError, codigoError, mensajeError, obtener } from '@/lib/errors'
 import { fechaLimaISO, formatFecha, formatFechaHora, formatHora, sumarDias } from '@/lib/fechas'
 import { rpc } from '@/lib/rpc'
 import { supabase } from '@/lib/supabase'
 import { duracion, formatSoles } from '@/lib/utils'
-import type { Cita, Servicio } from '@/types/database.generated'
+import type { Cita } from '@/types/database'
 
 const labels = ['Servicio', 'Especialista', 'Fecha', 'Hora', 'Confirmar']
 
@@ -22,7 +23,7 @@ export default function Booking() {
 }
 
 export function BookingForm({ initialService, cita, admin, onDone }: { initialService?: number; cita?: Cita; admin?: boolean; onDone?: () => void }) {
-  const catalog = useCatalogo()
+  const catalog = useCatalogoCategorias()
   const citaService = useQuery({
     queryKey: ['servicio-cita', cita?.id], enabled: !!cita,
     queryFn: async () => {
@@ -35,10 +36,7 @@ export function BookingForm({ initialService, cita, admin, onDone }: { initialSe
       return obtener(await supabase.from('servicios').select('*').eq('id', reference.id_servicio).single())
     },
   })
-  const clients = useQuery({
-    queryKey: ['clientes', 'reserva'], enabled: !!admin && !cita,
-    queryFn: async () => obtener(await supabase.from('clientes').select('id,nombres,apellidos').order('nombres')) ?? [],
-  })
+  const clients = useClientes(!!admin && !cita)
   const [client, setClient] = useState<number>()
   const [selected, setSelected] = useState(initialService)
   const [staff, setStaff] = useState<number>()
@@ -50,7 +48,7 @@ export function BookingForm({ initialService, cita, admin, onDone }: { initialSe
   const [confirmed, setConfirmed] = useState(false)
   const cache = useQueryClient()
   const reduce = useReducedMotion()
-  const service = cita ? citaService.data : catalog.data?.find(item => item.id === selected)
+  const service = cita ? citaService.data : catalog.data?.flatMap(category => category.servicios).find(item => item.id === selected)
   const today = fechaLimaISO()
   const days = Array.from({ length: 7 }, (_, i) => sumarDias(today, weekOffset * 7 + i))
 
@@ -103,17 +101,11 @@ export function BookingForm({ initialService, cita, admin, onDone }: { initialSe
   </section>
 
   if (cita && citaService.isError) return <Failure error={citaService.error} retry={() => void citaService.refetch()}/>
-  const groups = new Map<string, Servicio[]>()
-  for (const item of catalog.data ?? []) {
-    const group = groups.get(item.categoria) ?? []
-    group.push(item)
-    groups.set(item.categoria, group)
-  }
   const stepContent = [
     <div className="form-stack" key="servicios">
       <h2>Elige un servicio</h2>
       {admin && !cita && (clients.isError ? <Failure error={clients.error} retry={() => void clients.refetch()}/> : <Field label="Clienta"><select value={client ?? ''} onChange={event => setClient(Number(event.target.value) || undefined)}><option value="">Selecciona una clienta</option>{clients.data?.map(item => <option value={item.id} key={item.id}>{item.nombres} {item.apellidos}</option>)}</select></Field>)}
-      {catalog.isPending ? <Skeleton/> : catalog.isError ? <Failure error={catalog.error} retry={() => void catalog.refetch()}/> : groups.size ? [...groups].map(([category, items]) => <section className="booking-group" key={category}><h3>{category}</h3><div className="choice-grid">{items.map(item => <button key={item.id} type="button" className="selection-card" aria-pressed={selected === item.id} onClick={() => { setSelected(item.id); setStaff(undefined); setDay(undefined); setTime(undefined) }}><span className="choice-content"><strong>{item.nombre}</strong>{item.descripcion && <small>{item.descripcion}</small>}<small>{duracion(item.duracion_min)} · {formatSoles(item.precio)}</small></span>{selected === item.id && <Check size={20}/>}</button>)}</div></section>) : <Empty title="Aún no hay servicios disponibles"><p>Vuelve más adelante para consultar el catálogo.</p></Empty>}
+      {catalog.isPending ? <Skeleton/> : catalog.isError ? <Failure error={catalog.error} retry={() => void catalog.refetch()}/> : catalog.data.length ? catalog.data.map(category => <section className="booking-group" key={category.id}><h3>{category.nombre}</h3>{category.descripcion && <p className="muted">{category.descripcion}</p>}<div className="choice-grid">{category.servicios.map(item => <button key={item.id} type="button" className="selection-card" aria-pressed={selected === item.id} onClick={() => { setSelected(item.id); setStaff(undefined); setDay(undefined); setTime(undefined) }}><span className="choice-content"><strong>{item.nombre}</strong><small>{duracion(item.duracion_min)} · {formatSoles(item.precio)}</small></span>{selected === item.id && <Check size={20}/>}</button>)}</div></section>) : <Empty title="Aún no hay servicios disponibles"><p>Vuelve más adelante para consultar el catálogo.</p></Empty>}
     </div>,
     <div className="form-stack" key="equipo"><h2>¿Quién te atenderá?</h2>
       {staffList.isPending || citaService.isLoading ? <Skeleton/> : staffList.isError ? <Failure error={staffList.error} retry={() => void staffList.refetch()}/> : <div className="choice-grid">

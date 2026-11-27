@@ -10,7 +10,7 @@ import { obtener, mensajeError } from '@/lib/errors'
 import { formatFechaHora } from '@/lib/fechas'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/providers/AuthProvider'
-import type { Notificacion } from '@/types/database.generated'
+import type { Notificacion } from '@/types/database'
 
 const keyFor = (id: string) => ['notificaciones', id]
 

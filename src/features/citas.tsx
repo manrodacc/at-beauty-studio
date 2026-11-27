@@ -8,7 +8,8 @@ import { mensajeError, obtener } from '@/lib/errors'
 import { formatFechaHora, restante, tiempoRestante } from '@/lib/fechas'
 import { rpc } from '@/lib/rpc'
 import { supabase } from '@/lib/supabase'
-import type { Cita } from '@/types/database.generated'
+import type { Cita } from '@/types/database'
+import { esCita } from '@/types/database'
 
 export const useCitas = (desde?: string, hasta?: string) => useQuery({
   queryKey: ['citas', desde, hasta],
@@ -16,7 +17,7 @@ export const useCitas = (desde?: string, hasta?: string) => useQuery({
     let query = supabase.from('citas_detalle').select('*').order('inicio', { ascending: true })
     if (desde) query = query.gte('fecha', desde)
     if (hasta) query = query.lte('fecha', hasta)
-    return obtener(await query) ?? []
+    return (obtener(await query) ?? []).filter(esCita)
   },
 })
 

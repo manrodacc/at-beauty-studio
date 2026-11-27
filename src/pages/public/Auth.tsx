@@ -43,7 +43,9 @@ function EntryForms({ registration }: { registration: boolean }) {
   const register = useForm<z.infer<typeof registerSchema>>({ resolver: zodResolver(registerSchema), defaultValues: { telefono: '' } })
   const recover = useForm<z.infer<typeof resetSchema>>({ resolver: zodResolver(resetSchema) })
   const from = (location.state as { from?: string } | null)?.from
-  const next = from && (from.startsWith('/app/') || from.startsWith('/admin/')) ? from : auth.profile ? homeFor(auth.profile.rol) : '/app'
+  const service = Number(new URLSearchParams(location.search).get('servicio'))
+  const selectedServicePath = Number.isSafeInteger(service) && service > 0 ? '/app/agendar?servicio=' + service : null
+  const next = from && (from.startsWith('/app/') || from.startsWith('/admin/')) ? from : selectedServicePath ?? (auth.profile ? homeFor(auth.profile.rol) : '/app')
 
   if (auth.loading) return <Skeleton/>
   if (auth.session && auth.profile) return <Navigate to={next} replace/>
@@ -51,7 +53,7 @@ function EntryForms({ registration }: { registration: boolean }) {
   if (confirmationEmail) return <>
     <h1>Cuenta creada</h1>
     <p role="status">{cuentaCreada} Revisa el mensaje que enviamos a <strong>{confirmationEmail}</strong> para confirmar tu correo electrónico.</p>
-    <Button asChild><Link to="/login" state={location.state}>Ir al inicio de sesión</Link></Button>
+    <Button asChild><Link to={'/login' + location.search} state={location.state}>Ir al inicio de sesión</Link></Button>
   </>
   const toggleReset = () => { setReset(!reset); setError(null); setNotice('') }
   const submit = async (action: () => Promise<void>) => {
@@ -73,7 +75,7 @@ function EntryForms({ registration }: { registration: boolean }) {
       <Button type="submit" disabled={recover.formState.isSubmitting}>Enviar enlace</Button>
       <Button variant="ghost" onClick={toggleReset}>Volver al inicio de sesión</Button>
     </form> : registration ? <form className="form-stack" onSubmit={register.handleSubmit(values => submit(async () => {
-      const data = await auth.signUp(values)
+      const data = await auth.signUp(values, next)
       if (data.session) toast.success(cuentaCreada)
       else if (data.user && data.user.identities?.length !== 0) setConfirmationEmail(values.correo)
       else setNotice('Revisa tu correo para continuar. Si ya tienes una cuenta, puedes iniciar sesión.')
@@ -94,9 +96,9 @@ function EntryForms({ registration }: { registration: boolean }) {
     </form>}
     {!reset && <><div className="auth-separator">o</div><Button variant="outline" className="google-button" disabled={googleBusy} onClick={() => {
       setGoogleBusy(true)
-      void submit(async () => { await auth.signInGoogle() }).finally(() => setGoogleBusy(false))
+      void submit(async () => { await auth.signInGoogle(next) }).finally(() => setGoogleBusy(false))
     }}><span aria-hidden className="google-mark">G</span> Continuar con Google</Button>
-    <p className="auth-switch">{registration ? '¿Ya tienes una cuenta?' : '¿Aún no tienes cuenta?'} <Link state={location.state} to={registration ? '/login' : '/registro'}>{registration ? 'Ingresa' : 'Regístrate'}</Link></p></>}
+    <p className="auth-switch">{registration ? '¿Ya tienes una cuenta?' : '¿Aún no tienes cuenta?'} <Link state={location.state} to={(registration ? '/login' : '/registro') + location.search}>{registration ? 'Ingresa' : 'Regístrate'}</Link></p></>}
   </>
 }
 

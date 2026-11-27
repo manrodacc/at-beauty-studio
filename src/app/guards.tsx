@@ -1,7 +1,7 @@
 import { Link, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { Button, Failure, Skeleton } from '@/components/ui'
 import { salir, useAuth } from '@/providers/AuthProvider'
-import type { Role } from '@/types/database.generated'
+import type { Role } from '@/types/database'
 import { homeFor } from './nav'
 
 export function RequireRole({ allow }: { allow?: Role[] }) {

@@ -12,7 +12,7 @@ import { formatFechaHora } from '@/lib/fechas'
 import { supabase } from '@/lib/supabase'
 import { duracion, formatSoles } from '@/lib/utils'
 import { useAuth } from '@/providers/AuthProvider'
-import type { Cita } from '@/types/database.generated'
+import type { Cita } from '@/types/database'
 import { BookingForm } from './Booking'
 
 export default function Client({ page }: { page: 'inicio' | 'citas' | 'historial' | 'perfil' }) {
@@ -47,7 +47,7 @@ function MisCitas() {
     </div>
     {query.isPending ? <Skeleton/> : query.isError ? <Failure error={query.error} retry={() => void query.refetch()}/> : !rows.length ? <section className="panel"><Empty title={tab === 'proximas' ? 'Aún no tienes una próxima cita' : 'Aún no tienes citas en el historial'}>{tab === 'proximas' && <Button asChild><Link to="/app/agendar">Reservar una cita</Link></Button>}</Empty></section> :
       <div className="appointment-grid">{(tab === 'historial' ? [...rows].reverse() : rows).map(cita => {
-        const canChange = cita.puede_cancelar && Date.parse(cita.limite_cancelacion) >= Date.now()
+        const canChange = cita.puede_cancelar && !!cita.limite_cancelacion && Date.parse(cita.limite_cancelacion) >= Date.now()
         return <CitaCard key={cita.id} cita={cita} countdown={tab === 'proximas'}>{tab === 'proximas' && <>
           <div className="button-row"><Button variant="outline" disabled={!canChange} onClick={() => setReschedule(cita)}>Reprogramar</Button><Button variant="ghost" disabled={!canChange} onClick={() => setCancel(cita)}>Cancelar</Button></div>
           {!canChange && <p className="muted">El plazo para cambiar esta cita terminó{cita.limite_cancelacion ? ' el ' + formatFechaHora(cita.limite_cancelacion) : ''}. Comunícate con el estudio si necesitas ayuda.</p>}

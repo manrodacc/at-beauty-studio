@@ -5,21 +5,23 @@ import { Link } from 'react-router-dom'
 import { z } from 'zod'
 import { Button, DataList, Empty, Failure, Field, Modal, PageTitle, Skeleton } from '@/components/ui'
 import { CancelarCita, StatusCita, pendiente, useCitas } from '@/features/citas'
-import { categorias, photoPath } from '@/features/catalogo'
-import { currencyAmount, formValues, optionalText, requiredText, useOperation, validate } from '@/features/operations'
+import { photoPath, useCategorias } from '@/features/catalogo'
+import { ClientForm, useClientes } from '@/features/clientes'
+import { currencyAmount, formValues, numericId, optionalText, requiredText, useOperation, validate } from '@/features/operations'
 import { obtener } from '@/lib/errors'
 import { fechaLimaISO, formatFecha, formatFechaHora } from '@/lib/fechas'
 import { rpc } from '@/lib/rpc'
 import { supabase } from '@/lib/supabase'
 import { duracion, formatSoles } from '@/lib/utils'
 import { useAuth } from '@/providers/AuthProvider'
-import type { Cita, Cliente, Servicio } from '@/types/database.generated'
+import type { Cita, Cliente, Servicio } from '@/types/database'
 import { BookingForm } from '@/pages/cliente/Booking'
 import { Colaboradoras, Configuracion } from './People'
+import { Categorias } from './Categorias'
 
 const ReportOverview = lazy(() => import('./Reports').then(module => ({ default: module.ReportOverview })))
 
-type Page = 'inicio' | 'citas' | 'clientes' | 'colaboradoras' | 'servicios' | 'caja' | 'configuracion'
+type Page = 'inicio' | 'citas' | 'clientes' | 'colaboradoras' | 'categorias' | 'servicios' | 'caja' | 'configuracion'
 const keys = ['caja', 'resumen', 'pagos', 'reportes']
 
 export default function Admin({ page }: { page: Page }) {
@@ -27,6 +29,7 @@ export default function Admin({ page }: { page: Page }) {
   if (page === 'citas') return <Citas/>
   if (page === 'clientes') return <Clientes/>
   if (page === 'colaboradoras') return <Colaboradoras/>
+  if (page === 'categorias') return <Categorias/>
   if (page === 'servicios') return <Servicios/>
   if (page === 'caja') return <Caja/>
   return <Configuracion/>
@@ -91,16 +94,11 @@ function Citas() {
   </>
 }
 
-const clientSchema = z.object({
-  nombres: requiredText, apellidos: requiredText,
-  correo: z.union([z.literal(''), z.email('Escribe un correo válido.')]).transform(value => value || null),
-  telefono: z.string().trim().regex(/^(?:\+?[\d ()-]{7,18})?$/, 'Escribe un teléfono válido.').transform(value => value || null),
-})
 function Clientes() {
   const [filter, setFilter] = useState('')
   const [view, setView] = useState<Cliente | null>(null)
   const [create, setCreate] = useState(false)
-  const query = useQuery({ queryKey: ['clientes', 'admin'], queryFn: async () => obtener(await supabase.from('clientes').select('*').order('nombres')) ?? [] })
+  const query = useClientes()
   const rows = (query.data ?? []).filter(row => [row.nombres, row.apellidos, row.correo, row.telefono].some(value => value?.toLowerCase().includes(filter.trim().toLowerCase())))
   return <><PageTitle title="Clientes" description="Consulta las fichas y registra clientas que llegan al estudio." action={<Button onClick={() => setCreate(true)}><Plus size={17}/> Nueva clienta</Button>}/>
     <section className="panel form-stack"><Field label="Buscar clienta"><input type="search" value={filter} onChange={event => setFilter(event.target.value)} placeholder="Nombre, correo o teléfono"/></Field>
@@ -112,15 +110,6 @@ function Clientes() {
     <Modal title="Nueva clienta" open={create} onOpenChange={setCreate}>{create && <ClientForm close={() => setCreate(false)}/>}</Modal>
     <Modal title="Ficha de la clienta" open={!!view} onOpenChange={open => { if (!open) setView(null) }}>{view && <ClientDetail client={view}/>}</Modal>
   </>
-}
-
-function ClientForm({ close }: { close: () => void }) {
-  const mutation = useOperation(async (input: Record<string, FormDataEntryValue>) => obtener(await supabase.from('clientes').insert(validate(clientSchema, input))), 'Clienta registrada', ['clientes'], close)
-  return <form className="form-stack" onSubmit={event => { event.preventDefault(); if (!mutation.isPending) mutation.mutate(formValues(event.currentTarget)) }}>
-    <div className="form-row"><Field label="Nombres"><input name="nombres" required/></Field><Field label="Apellidos"><input name="apellidos" required/></Field></div>
-    <Field label="Correo (opcional)"><input name="correo" type="email"/></Field><Field label="Teléfono (opcional)"><input name="telefono" type="tel"/></Field>
-    {mutation.error && <Failure error={mutation.error}/>}<Button type="submit" disabled={mutation.isPending}>Guardar clienta</Button>
-  </form>
 }
 
 function ClientDetail({ client }: { client: Cliente }) {
@@ -135,7 +124,7 @@ function ClientDetail({ client }: { client: Cliente }) {
 }
 
 const serviceSchema = z.object({
-  nombre: requiredText, categoria: z.enum(categorias), descripcion: optionalText,
+  nombre: requiredText, id_categoria: numericId, descripcion: optionalText,
   precio: currencyAmount, duracion_min: z.coerce.number().int().positive('Indica una duración válida.').max(1440),
   estado: z.enum(['on']).optional().transform(Boolean),
 })
@@ -143,10 +132,14 @@ const storage = supabase.storage.from('catalogo')
 
 function Servicios() {
   const [edit, setEdit] = useState<Servicio | 'new' | null>(null)
-  const query = useQuery({ queryKey: ['servicios', 'admin'], queryFn: async () => obtener(await supabase.from('servicios').select('*').order('nombre')) ?? [] })
+  const [category, setCategory] = useState('')
+  const categories = useCategorias()
+  const query = useQuery({ queryKey: ['servicios', 'admin'], queryFn: async () => obtener(await supabase.from('servicios').select('*, categorias_servicio(nombre)').order('nombre')) ?? [] })
+  const rows = (query.data ?? []).filter(row => !category || row.id_categoria === Number(category))
   return <><PageTitle title="Servicios" description="Administra el catálogo público, las tarifas y la duración." action={<Button onClick={() => setEdit('new')}><Plus size={17}/> Nuevo servicio</Button>}/>
-    {query.isPending ? <Skeleton/> : query.isError ? <Failure error={query.error} retry={() => void query.refetch()}/> : <section className="panel"><DataList rows={query.data} rowKey={row => row.id} columns={[
-      { label: 'Servicio', render: row => row.nombre }, { label: 'Categoría', render: row => row.categoria }, { label: 'Duración', render: row => duracion(row.duracion_min) },
+    <section className="panel"><Field label="Filtrar por categoría"><select value={category} onChange={event => setCategory(event.target.value)}><option value="">Todas las categorías</option>{categories.data?.map(item => <option key={item.id} value={item.id}>{item.nombre}{!item.estado && ' (inactiva)'}</option>)}</select></Field>{categories.isError && <Failure error={categories.error} retry={() => void categories.refetch()}/>}</section>
+    {query.isPending ? <Skeleton/> : query.isError ? <Failure error={query.error} retry={() => void query.refetch()}/> : <section className="panel"><DataList rows={rows} rowKey={row => row.id} columns={[
+      { label: 'Servicio', render: row => row.nombre }, { label: 'Categoría', render: row => row.categorias_servicio?.nombre ?? '—' }, { label: 'Duración', render: row => duracion(row.duracion_min) },
       { label: 'Precio', render: row => formatSoles(row.precio) }, { label: 'Estado', render: row => row.estado ? 'Publicado' : 'Oculto' },
       { label: 'Acciones', render: row => <Button variant="outline" onClick={() => setEdit(row)}>Editar</Button> },
     ]}/></section>}
@@ -155,6 +148,7 @@ function Servicios() {
 }
 
 function ServiceForm({ service, close }: { service?: Servicio; close: () => void }) {
+  const categories = useCategorias()
   const [selected, setSelected] = useState<Servicio | undefined>(service)
   const [file, setFile] = useState<File | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -163,7 +157,7 @@ function ServiceForm({ service, close }: { service?: Servicio; close: () => void
     const changes = { ...values, descripcion: values.descripcion ?? null }
     const row = obtener(await (selected ? supabase.from('servicios').update(changes).eq('id', selected.id) : supabase.from('servicios').insert(changes)).select('*').single())
     if (row) setSelected(row)
-  }, 'Servicio guardado', ['servicios', 'catalogo', 'reportes', 'resumen'], selected ? close : undefined)
+  }, 'Servicio guardado', ['servicios', 'catalogo', 'categorias', 'reportes', 'resumen'], selected ? close : undefined)
   const photo = useOperation(async (image: File) => {
     if (!selected) return
     const valid = validate(z.file().max(3_000_000, 'La foto debe pesar menos de 3 MB.').mime(['image/webp', 'image/jpeg', 'image/png', 'image/avif'], 'Usa una imagen WebP, JPG, PNG o AVIF.'), image)
@@ -174,11 +168,12 @@ function ServiceForm({ service, close }: { service?: Servicio; close: () => void
   })
   return <div className="form-stack">
     <form className="form-stack" onSubmit={event => { event.preventDefault(); if (!save.isPending) save.mutate(formValues(event.currentTarget)) }}>
-      <div className="form-row"><Field label="Nombre"><input name="nombre" required defaultValue={selected?.nombre}/></Field><Field label="Categoría"><select name="categoria" defaultValue={selected?.categoria ?? categorias[0]}>{categorias.map(value => <option key={value}>{value}</option>)}</select></Field></div>
+      <div className="form-row"><Field label="Nombre"><input name="nombre" required defaultValue={selected?.nombre}/></Field><Field label="Categoría"><select name="id_categoria" required disabled={!categories.isSuccess} defaultValue={selected?.id_categoria ?? ''}><option value="">Selecciona una categoría</option>{categories.data?.map(item => <option key={item.id} value={item.id}>{item.nombre}{!item.estado && ' (inactiva)'}</option>)}</select></Field></div>
+      {categories.isPending ? <p role="status">Cargando categorías…</p> : categories.isError ? <Failure error={categories.error} retry={() => void categories.refetch()}/> : !categories.data.length && <p>Crea primero una categoría en <Link to="/admin/categorias">Categorías</Link>.</p>}
       <Field label="Descripción"><textarea name="descripcion" defaultValue={selected?.descripcion ?? ''} maxLength={400}/></Field>
       <div className="form-row"><Field label="Precio en soles"><input type="number" name="precio" min="0" step=".01" required defaultValue={selected?.precio}/></Field><Field label="Duración en minutos"><input type="number" name="duracion_min" min="1" max="1440" required defaultValue={selected?.duracion_min}/></Field></div>
       <label className="check-field"><input type="checkbox" name="estado" defaultChecked={selected?.estado ?? true}/> Mostrar en el catálogo</label>
-      {save.error && <Failure error={save.error}/>}<Button type="submit" disabled={save.isPending}>Guardar servicio</Button>
+      {save.error && <Failure error={save.error}/>}<Button type="submit" disabled={save.isPending || !categories.data?.length}>Guardar servicio</Button>
     </form>
     {selected && <div className="form-stack"><Field label="Foto del servicio"><input ref={fileInput} disabled={photo.isPending} type="file" accept="image/webp,image/jpeg,image/png,image/avif" onChange={event => { photo.reset(); setFile(event.target.files?.[0] ?? null) }}/></Field>
       {photo.error && <Failure error={photo.error}/>}<Button variant="outline" disabled={!file || photo.isPending} onClick={() => { if (file) photo.mutate(file) }}>Subir foto</Button></div>}
@@ -222,7 +217,7 @@ function Caja() {
     </section>
     {query.isPending ? <Skeleton/> : query.isError ? <Failure error={query.error} retry={() => void query.refetch()}/> : <>
       <div className="stats-grid">{[['Ingresos', query.data.ingresos], ['Egresos', query.data.egresos], ['Monto esperado', query.data.expected], ...(closed ? [['Diferencia', closed.diferencia], ['Monto contado', closed.monto_contado]] : [])].map(([label, value]) => <div className="panel stat" key={label}><span>{label}</span><strong>{formatSoles(Number(value))}</strong></div>)}</div>
-      {closed && <div className={'notice ' + (Number(closed.diferencia) ? 'notice-warn' : '')}>{Number(closed.diferencia) ? 'Caja cerrada con diferencia de ' + formatSoles(closed.diferencia) : 'Caja cerrada sin diferencia.'} {closed.observaciones}</div>}
+      {closed && <div className={'notice ' + (Number(closed.diferencia) ? 'notice-warn' : '')}>{Number(closed.diferencia) ? 'Caja cerrada con diferencia de ' + formatSoles(closed.diferencia ?? 0) : 'Caja cerrada sin diferencia.'} {closed.observaciones}</div>}
       <section className="panel"><h2 className="panel-heading">Egresos registrados</h2>{!query.data.expenses.length ? <Empty title="No hay egresos en esta fecha"/> : <DataList rows={query.data.expenses} rowKey={row => row.id} columns={[{ label: 'Concepto', render: row => row.concepto }, { label: 'Monto', render: row => formatSoles(row.monto) }]}/>}</section>
     </>}
     <Modal title={active === 'egreso' ? 'Registrar egreso' : 'Cerrar caja'} open={!!active} onOpenChange={open => { if (!open) close() }}>

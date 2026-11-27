@@ -4,11 +4,12 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { toast } from 'sonner'
 import { AppError, mensajeError, obtener, verificar } from '@/lib/errors'
 import { googleDisponible, siteUrl, supabase } from '@/lib/supabase'
-import type { Profile } from '@/types/database.generated'
+import type { Profile } from '@/types/database'
 
 type Registration = { correo: string; password: string; nombres: string; apellidos: string; telefono: string }
 export const cuentaCreada = 'Tu cuenta se ha creado con éxito.'
 const googleStartKey = 'at-google-auth-start'
+const authDestination = (path: string) => path === '/app' || path.startsWith('/app/') || path.startsWith('/admin/') ? path : '/app'
 
 function confirmGoogleRegistration(user?: User) {
   let started: string | null
@@ -24,11 +25,11 @@ function confirmGoogleRegistration(user?: User) {
 
 const authActions = {
   signIn: async (email: string, password: string) => obtener(await supabase.auth.signInWithPassword({ email, password })),
-  signUp: async ({ correo, password, ...data }: Registration) => obtener(await supabase.auth.signUp({ email: correo, password, options: { data, emailRedirectTo: siteUrl + '/app' } })),
-  signInGoogle: async () => {
+  signUp: async ({ correo, password, ...data }: Registration, next = '/app') => obtener(await supabase.auth.signUp({ email: correo, password, options: { data, emailRedirectTo: siteUrl + authDestination(next) } })),
+  signInGoogle: async (next = '/app') => {
     if (!await googleDisponible()) throw new AppError('provider_disabled', 'El acceso con Google todavía no está configurado.')
     try { sessionStorage.setItem(googleStartKey, String(Date.now())) } catch { /* El acceso también funciona sin almacenamiento de sesión. */ }
-    return obtener(await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin + '/app' } }))
+    return obtener(await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin + authDestination(next) } }))
   },
   resetPassword: async (email: string) => obtener(await supabase.auth.resetPasswordForEmail(email, { redirectTo: siteUrl + '/definir-contrasena' })),
   signOut: async () => verificar((await supabase.auth.signOut()).error),
