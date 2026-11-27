@@ -62,6 +62,7 @@ function Atencion() {
   const area = admin ? '/admin' : '/app'
   const navigate = useNavigate()
   const products = useProductos()
+  const productCategories = useCategoriasProducto()
   const catalog = useCatalogo()
   const details = useQuery({
     queryKey: ['citas', 'atencion', routeId], enabled: !walkIn && /^\d+$/.test(routeId ?? ''),
@@ -77,8 +78,9 @@ function Atencion() {
     queryKey: ['colaboradoras-servicio', service], enabled: walkIn && admin && !!service,
     queryFn: () => rpc('colaboradoras_para_servicio', { p_servicio: service }),
   })
-  const [product, setProduct] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState<number | ''>('')
   const [productSearch, setProductSearch] = useState('')
+  const [selectedProduct, setSelectedProduct] = useState<Producto | null>(null)
   const [amount, setAmount] = useState('1')
   const [items, setItems] = useState<{ id_producto: number; cantidad: number }[]>([])
   const [inputError, setInputError] = useState<unknown>(null)
@@ -94,15 +96,38 @@ function Atencion() {
     })
   }, 'Atención registrada', reportsKeys, () => navigate(area + '/pagos'))
 
+  // Filtrado de productos por categoría y texto en vivo
+  const normalizedSearch = productSearch.trim().toLowerCase()
+  const filteredProducts = (products.data ?? []).filter(item => {
+    if (!item.estado) return false
+    if (selectedCategory && item.id_categoria !== selectedCategory) return false
+    if (!normalizedSearch) return true
+    return item.nombre.toLowerCase().includes(normalizedSearch)
+  })
+
+  function getCategoryName(idCategoria: number) {
+    return productCategories.data?.find(cat => cat.id === idCategoria)?.nombre
+  }
+
+  function selectProduct(item: Producto) {
+    setSelectedProduct(item)
+    setInputError(null)
+  }
+
   function addProduct() {
     try {
-      const id = validate(numericId, product)
+      if (!selectedProduct) throw new AppError('producto_requerido', 'Selecciona un producto de la lista o sugerencias.')
       const count = validate(quantity.refine(value => value > 0, 'Indica una cantidad mayor que cero.'), amount)
       setItems(current => {
-        const existing = current.find(item => item.id_producto === id)
-        return existing ? current.map(item => item.id_producto === id ? { ...item, cantidad: Number((item.cantidad + count).toFixed(3)) } : item) : [...current, { id_producto: id, cantidad: count }]
+        const existing = current.find(item => item.id_producto === selectedProduct.id)
+        return existing
+          ? current.map(item => item.id_producto === selectedProduct.id ? { ...item, cantidad: Number((item.cantidad + count).toFixed(3)) } : item)
+          : [...current, { id_producto: selectedProduct.id, cantidad: count }]
       })
-      setProduct(''); setAmount('1'); setInputError(null)
+      setSelectedProduct(null)
+      setProductSearch('')
+      setAmount('1')
+      setInputError(null)
     } catch (error) { setInputError(error) }
   }
 
@@ -125,16 +150,142 @@ function Atencion() {
         <Field label="Duración real (min)"><input name="duracion" type="number" min="1" max="1440" defaultValue={details.data?.duracion_min ?? selectedService?.duracion_min} required/></Field>
         <Field label="Total en soles"><input name="total" type="number" min="0" step=".01" defaultValue={details.data?.precio ?? selectedService?.precio} required/></Field>
       </div>
+
       <section className="form-stack"><h2 className="panel-heading">Productos utilizados</h2>
-        <Field label="Buscar producto"><input type="search" value={productSearch} onChange={event => setProductSearch(event.target.value)}/></Field>
-        <div className="form-row align-end">
-          <Field label="Producto"><select value={product} onChange={event => setProduct(event.target.value)}><option value="">Selecciona</option>{products.data?.filter(item => item.estado && (String(item.id) === product || item.nombre.toLowerCase().includes(productSearch.trim().toLowerCase()))).map(item => <option key={item.id} value={item.id}>{item.nombre} · {item.stock_actual} {item.unidad}</option>)}</select></Field>
-          <Field label="Cantidad"><input type="number" min=".001" step=".001" value={amount} onChange={event => setAmount(event.target.value)}/></Field>
-          <Button variant="outline" onClick={addProduct}>Agregar producto</Button>
+        <div className="product-picker-box">
+          <div className="form-row">
+            <Field label="Categoría de producto">
+              <select
+                value={selectedCategory}
+                onChange={event => {
+                  setSelectedCategory(event.target.value ? Number(event.target.value) : '')
+                }}
+              >
+                <option value="">Todas las categorías</option>
+                {productCategories.data?.map(cat => (
+                  <option key={cat.id} value={cat.id}>{cat.nombre}</option>
+                ))}
+              </select>
+            </Field>
+
+            <Field label="Escribe para buscar producto">
+              <input
+                type="search"
+                value={productSearch}
+                placeholder="Escribe el nombre del producto..."
+                onChange={event => {
+                  setProductSearch(event.target.value)
+                  if (selectedProduct && !selectedProduct.nombre.toLowerCase().includes(event.target.value.toLowerCase())) {
+                    setSelectedProduct(null)
+                  }
+                }}
+              />
+            </Field>
+          </div>
+
+          {/* Sugerencias interactivas inmediatas */}
+          {(!selectedProduct || productSearch.length > 0) && (
+            <div className="form-stack">
+              <span className="field-label" style={{ fontSize: '.8rem', color: 'var(--color-plum-700)' }}>
+                {productSearch ? `Resultados (${filteredProducts.length})` : 'Productos disponibles:'}
+              </span>
+              <div className="product-suggestions" role="listbox" aria-label="Sugerencias de productos">
+                {filteredProducts.length ? (
+                  filteredProducts.slice(0, 10).map(item => {
+                    const catName = getCategoryName(item.id_categoria)
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className="product-suggestion-item"
+                        onClick={() => selectProduct(item)}
+                      >
+                        <div>
+                          <strong>{item.nombre}</strong>
+                          {catName && (
+                            <span className="product-badge-category">{catName}</span>
+                          )}
+                        </div>
+                        <span>Stock: {item.stock_actual} {item.unidad}</span>
+                      </button>
+                    )
+                  })
+                ) : (
+                  <p className="muted" style={{ padding: '8px 12px', margin: 0, fontSize: '.86rem' }}>
+                    No se encontraron productos con ese nombre o categoría.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Producto seleccionado para añadir cantidad */}
+          {selectedProduct && (
+            <div className="product-selected-tag">
+              <div>
+                <span>Producto a añadir: <strong>{selectedProduct.nombre}</strong></span>
+                {getCategoryName(selectedProduct.id_categoria) && (
+                  <span className="product-badge-category">{getCategoryName(selectedProduct.id_categoria)}</span>
+                )}
+                <span className="muted" style={{ marginLeft: '10px' }}>(Stock: {selectedProduct.stock_actual} {selectedProduct.unidad})</span>
+              </div>
+              <Button variant="ghost" type="button" onClick={() => setSelectedProduct(null)}>Cambiar</Button>
+            </div>
+          )}
+
+          <div className="form-row align-end">
+            <Field label={selectedProduct ? `Cantidad (${selectedProduct.unidad})` : 'Cantidad'}>
+              <input
+                type="number"
+                min=".001"
+                step=".001"
+                value={amount}
+                onChange={event => setAmount(event.target.value)}
+              />
+            </Field>
+            <Button
+              variant="outline"
+              type="button"
+              disabled={!selectedProduct}
+              onClick={addProduct}
+            >
+              Agregar a la lista
+            </Button>
+          </div>
         </div>
+
         {inputError !== null && <Failure error={inputError}/>}
-        {!!items.length && <ul className="line-list">{items.map(item => <li key={item.id_producto}><span>{products.data?.find(product => product.id === item.id_producto)?.nombre} · {item.cantidad}</span><Button variant="ghost" onClick={() => setItems(current => current.filter(product => product.id_producto !== item.id_producto))}>Quitar</Button></li>)}</ul>}
+
+        {/* Lista de productos agregados */}
+        {!!items.length && (
+          <div className="form-stack">
+            <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: '6px 0 0' }}>Lista de productos consumidos</h3>
+            <div className="consumed-items-list">
+              {items.map(item => {
+                const prod = products.data?.find(p => p.id === item.id_producto)
+                return (
+                  <div key={item.id_producto} className="consumed-item-card">
+                    <div className="consumed-item-info">
+                      <span className="consumed-item-title">{prod?.nombre ?? `Producto #${item.id_producto}`}</span>
+                      <span className="consumed-item-meta">
+                        Cantidad utilizada: <strong>{item.cantidad} {prod?.unidad ?? 'unidades'}</strong>
+                      </span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      type="button"
+                      onClick={() => setItems(current => current.filter(p => p.id_producto !== item.id_producto))}
+                    >
+                      Quitar
+                    </Button>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
       </section>
+
       <Field label="Observaciones (opcional)"><textarea name="observaciones" maxLength={400}/></Field>
       {mutation.error && <Failure error={mutation.error}/>}
       <Button type="submit" disabled={mutation.isPending}>Registrar atención</Button>

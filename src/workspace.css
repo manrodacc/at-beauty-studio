@@ -151,6 +151,22 @@
 .attendance-panel h2 { font-size:3rem; font-variant-numeric:tabular-nums; margin-block:8px; }
 .line-list { display:grid; gap:5px; }
 .line-list li { display:flex; align-items:center; justify-content:space-between; gap:8px; padding-inline:8px; background:var(--color-rose-50); border-radius:9px; }
+
+/* Product picker in atención */
+.product-picker-box { display:grid; gap:12px; background:var(--color-rose-50); border:1px solid var(--color-rose-200); border-radius:14px; padding:14px; }
+.product-suggestions { display:grid; gap:4px; max-height:210px; overflow-y:auto; background:#fff; border:1px solid var(--color-rose-200); border-radius:11px; padding:4px; box-shadow:var(--shadow-soft); }
+.product-suggestion-item { display:flex; align-items:center; justify-content:space-between; width:100%; text-align:left; padding:8px 10px; border-radius:8px; border:none; background:transparent; cursor:pointer; font-size:.88rem; transition:background .15s ease; }
+.product-suggestion-item:hover, .product-suggestion-item:focus-visible { background:var(--color-rose-100); outline:none; }
+.product-suggestion-item strong { color:var(--color-plum-900); font-weight:650; }
+.product-suggestion-item span { color:var(--color-plum-700); font-size:.78rem; font-variant-numeric:tabular-nums; }
+.product-selected-tag { display:flex; align-items:center; justify-content:space-between; background:#fff; border:1px solid var(--color-rose-300); padding:7px 12px; border-radius:10px; font-size:.88rem; }
+.product-badge-category { font-size:.72rem; padding:2px 7px; border-radius:6px; background:var(--color-rose-100); color:var(--color-rose-700); font-weight:700; margin-left:6px; }
+.consumed-items-list { display:grid; gap:8px; }
+.consumed-item-card { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 14px; background:#fff; border:1px solid var(--color-rose-200); border-radius:12px; box-shadow:0 2px 8px -4px rgba(222, 74, 142, 0.15); }
+.consumed-item-info { display:grid; gap:2px; }
+.consumed-item-title { font-weight:700; font-size:.9rem; color:var(--color-plum-900); }
+.consumed-item-meta { font-size:.8rem; color:var(--color-plum-700); font-variant-numeric:tabular-nums; }
+
 .stock-card meter { width:100%; height:14px; }
 .stock-card meter::-webkit-meter-bar { background:var(--color-lilac-100); border:none; border-radius:10px; }
 .stock-card meter::-webkit-meter-optimum-value { background:var(--color-ok); }
