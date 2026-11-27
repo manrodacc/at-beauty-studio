@@ -71,11 +71,16 @@
 .center-frame { width:min(100% - 40px, 530px); min-height:70dvh; margin:auto; display:grid; align-content:center; gap:12px; }
 .center-frame .button { justify-self:start; }
 .modal-overlay { position:fixed; inset:0; z-index:49; background:rgb(62 18 54 /.4); }
-.modal-sheet,.drawer-sheet { position:fixed; z-index:50; overflow:auto; max-height:85dvh; background:#fffdfd; padding:23px; box-shadow:var(--shadow-lift); outline:none; }
+.modal-sheet,.drawer-sheet { position:fixed; z-index:50; display:flex; flex-direction:column; overflow:hidden; max-height:85dvh; background:#fffdfd; box-shadow:var(--shadow-lift); outline:none; }
 .modal-sheet { top:50%; left:50%; transform:translate(-50%,-50%); width:min(100% - 34px, 690px); border-radius:var(--radius-card); }
-.drawer-sheet { inset:auto 0 0; border-radius:24px 24px 0 0; padding-bottom:calc(22px + env(safe-area-inset-bottom)); }
+.drawer-sheet { inset:auto 0 0; max-height:90dvh; border-radius:24px 24px 0 0; }
+.drawer-sheet[data-vaul-drawer] { touch-action:pan-y; }
+.modal-header { position:relative; flex:none; padding:20px 23px 12px; border-bottom:1px solid var(--color-rose-100); background:#fffdfd; }
+.drawer-sheet .modal-header { padding-top:12px; }
+.modal-body { flex:1 1 auto; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; touch-action:pan-y; padding:18px 23px 23px; }
+.drawer-sheet .modal-body { padding-bottom:calc(24px + env(safe-area-inset-bottom)); }
 .drawer-handle { margin:0 auto 10px; }
-.modal-title { font-size:2rem; padding-right:48px; margin-bottom:16px; }
+.modal-title { font-size:2rem; padding-right:48px; margin-bottom:0; }
 .button.modal-close { width:44px; min-height:44px; padding:0; position:absolute; top:12px; right:12px; }
 .notification-trigger { position:relative; }
 .notification-trigger>span:first-child { display:grid; place-items:center; }
@@ -151,6 +156,25 @@
 .attendance-panel h2 { font-size:3rem; font-variant-numeric:tabular-nums; margin-block:8px; }
 .line-list { display:grid; gap:5px; }
 .line-list li { display:flex; align-items:center; justify-content:space-between; gap:8px; padding-inline:8px; background:var(--color-rose-50); border-radius:9px; }
+
+/* Client picker in atención */
+.client-search-box { position:relative; display:grid; gap:6px; }
+.client-suggestions { display:grid; gap:4px; max-height:240px; overflow-y:auto; background:#fff; border:1px solid var(--color-rose-200); border-radius:14px; padding:6px; box-shadow:var(--shadow-lift); }
+.client-suggestions-hint { font-size:.76rem; font-weight:750; color:var(--color-plum-700); padding:4px 8px 2px; }
+.client-suggestion-item { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; text-align:left; padding:9px 10px; border-radius:10px; border:none; background:transparent; cursor:pointer; transition:background .15s ease; }
+.client-suggestion-item:hover, .client-suggestion-item:focus-visible { background:var(--color-rose-100); outline:none; }
+.client-suggestion-item > div { display:grid; gap:2px; min-width:0; }
+.client-suggestion-item strong { color:var(--color-plum-900); font-size:.9rem; font-weight:700; }
+.client-suggestion-item small { color:var(--color-plum-700); font-size:.78rem; font-variant-numeric:tabular-nums; }
+.client-suggestion-item > span { flex:none; font-size:.78rem; font-weight:750; color:var(--color-rose-700); }
+.client-suggestions-empty { display:grid; justify-items:start; gap:10px; padding:10px; }
+.client-suggestions-empty p { margin:0; font-size:.86rem; color:var(--color-plum-700); }
+.client-selected-card { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; padding:12px 14px; border-radius:14px; border:1px solid var(--color-rose-200); background:var(--color-rose-50); }
+.client-selected-info { display:flex; align-items:center; gap:12px; min-width:0; }
+.client-selected-info > div { display:grid; gap:2px; min-width:0; }
+.client-selected-kicker { font-size:.72rem; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--color-rose-700); }
+.client-selected-info strong { font-size:.96rem; color:var(--color-plum-900); }
+.client-selected-info small { font-size:.8rem; color:var(--color-plum-700); font-variant-numeric:tabular-nums; }
 
 /* Product picker in atención */
 .product-picker-box { display:grid; gap:12px; background:var(--color-rose-50); border:1px solid var(--color-rose-200); border-radius:14px; padding:14px; }

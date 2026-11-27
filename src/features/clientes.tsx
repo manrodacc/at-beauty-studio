@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus } from 'lucide-react'
-import { useState } from 'react'
+import { Plus, UserCheck } from 'lucide-react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { z } from 'zod'
 import { Button, Failure, Field, Modal } from '@/components/ui'
@@ -71,18 +71,120 @@ const normalizar = (value: string) => value.normalize('NFD').replace(/[\u0300-\u
 
 export function ClientPicker({ clients, value, onChange, disabled }: { clients: Cliente[]; value: number | undefined; onChange: (id: number | undefined) => void; disabled?: boolean }) {
   const [search, setSearch] = useState('')
+  const [open, setOpen] = useState(false)
   const [create, setCreate] = useState(false)
+  const containerRef = useRef<HTMLElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const listId = useId()
+
   const term = normalizar(search)
   const matches = clients.filter(client => normalizar([client.nombres, client.apellidos, client.correo, client.telefono].filter(Boolean).join(' ')).includes(term))
   const selected = clients.find(client => client.id === value)
-  const options = selected && !matches.some(client => client.id === selected.id) ? [selected, ...matches] : matches
-  return <section className="form-stack" aria-label="Seleccionar clienta">
-    <div className="form-row align-end">
-      <Field label="Buscar clienta"><input type="search" value={search} disabled={disabled} placeholder="Nombre, apellido, correo o teléfono" onChange={event => { setSearch(event.target.value); onChange(undefined) }}/></Field>
-      <Button variant="outline" disabled={disabled} onClick={() => setCreate(true)}><Plus size={17}/> Nueva clienta</Button>
-    </div>
-    {!matches.length && <p role="status">No encontramos clientas con esa búsqueda. Puedes registrar una nueva clienta.</p>}
-    <Field label="Clienta"><select name="cliente" required value={value ?? ''} disabled={disabled} onChange={event => onChange(Number(event.target.value) || undefined)}><option value="">Selecciona una clienta</option>{options.map(client => <option value={client.id} key={client.id}>{client.nombres} {client.apellidos}{client.telefono ? ' · ' + client.telefono : ''}</option>)}</select></Field>
-    <Modal title="Nueva clienta" open={create} onOpenChange={setCreate}>{create && <ClientForm close={() => setCreate(false)} onCreated={client => { setSearch(''); onChange(client.id) }}/>}</Modal>
+
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) setOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [])
+
+  function selectClient(client: Cliente) {
+    onChange(client.id)
+    setSearch('')
+    setOpen(false)
+  }
+
+  function clearSelection() {
+    onChange(undefined)
+    setSearch('')
+    setOpen(true)
+    requestAnimationFrame(() => inputRef.current?.focus())
+  }
+
+  return <section ref={containerRef} className="form-stack client-picker" aria-label="Seleccionar clienta">
+    <input type="hidden" name="cliente" value={value ?? ''}/>
+    {selected ? (
+      <div className="client-selected-card" role="status">
+        <div className="client-selected-info">
+          <span className="soft-icon" aria-hidden><UserCheck size={18}/></span>
+          <div>
+            <span className="client-selected-kicker">Clienta seleccionada</span>
+            <strong>{selected.nombres} {selected.apellidos}</strong>
+            {(selected.telefono || selected.correo) && (
+              <small>{[selected.telefono, selected.correo].filter(Boolean).join(' · ')}</small>
+            )}
+          </div>
+        </div>
+        <Button type="button" variant="outline" disabled={disabled} onClick={clearSelection}>Cambiar</Button>
+      </div>
+    ) : (
+      <div className="client-search-box">
+        <div className="form-row align-end">
+          <Field label="Buscar clienta">
+            <input
+              ref={inputRef}
+              type="search"
+              value={search}
+              disabled={disabled}
+              autoComplete="off"
+              aria-expanded={open}
+              aria-controls={listId}
+              placeholder="Escribe nombre, apellido, correo o teléfono..."
+              onFocus={() => setOpen(true)}
+              onKeyDown={event => {
+                if (event.key === 'Escape') setOpen(false)
+                if (event.key === 'Enter' && open && matches.length === 1) {
+                  event.preventDefault()
+                  selectClient(matches[0])
+                }
+              }}
+              onChange={event => {
+                setSearch(event.target.value)
+                setOpen(true)
+              }}
+            />
+          </Field>
+          <Button type="button" variant="outline" disabled={disabled} onClick={() => setCreate(true)}><Plus size={17}/> Nueva clienta</Button>
+        </div>
+        {(open || term.length > 0) && (
+          <div id={listId} className="client-suggestions" role="listbox" aria-label="Resultados de clientas">
+            {matches.length ? (
+              <>
+                <span className="client-suggestions-hint">
+                  {term ? `Resultados (${matches.length})` : `Clientas registradas (${matches.length})`}
+                </span>
+                {matches.slice(0, 12).map(client => (
+                  <button
+                    key={client.id}
+                    type="button"
+                    role="option"
+                    aria-selected={false}
+                    className="client-suggestion-item"
+                    onClick={() => selectClient(client)}
+                  >
+                    <div>
+                      <strong>{client.nombres} {client.apellidos}</strong>
+                      {(client.telefono || client.correo) && (
+                        <small>{[client.telefono, client.correo].filter(Boolean).join(' · ')}</small>
+                      )}
+                    </div>
+                    <span>Elegir</span>
+                  </button>
+                ))}
+              </>
+            ) : (
+              <div className="client-suggestions-empty" role="status">
+                <p>No encontramos clientas con esa búsqueda. Puedes registrar una nueva clienta.</p>
+                <Button type="button" variant="outline" disabled={disabled} onClick={() => setCreate(true)}>
+                  <Plus size={16}/> Registrar nueva clienta
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )}
+    <Modal title="Nueva clienta" open={create} onOpenChange={setCreate}>{create && <ClientForm close={() => setCreate(false)} onCreated={client => { setSearch(''); setOpen(false); onChange(client.id) }}/>}</Modal>
   </section>
 }

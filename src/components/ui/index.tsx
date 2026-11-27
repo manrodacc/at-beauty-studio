@@ -31,14 +31,21 @@ export function Modal({ title, open, onOpenChange, children }: { title: string; 
   const mobile = window.matchMedia('(max-width: 639px)').matches
   if (mobile) return <Drawer.Root open={open} onOpenChange={onOpenChange} handleOnly>
     <Drawer.Portal><Drawer.Overlay className="modal-overlay"/><Drawer.Content className="drawer-sheet" aria-describedby={undefined}>
-      <Drawer.Handle className="drawer-handle"/><Drawer.Title className="modal-title">{title}</Drawer.Title>{children}
-      <Drawer.Close asChild><Button variant="ghost" className="modal-close" aria-label="Cerrar"><X/></Button></Drawer.Close>
+      <div className="modal-header">
+        <Drawer.Handle className="drawer-handle"/>
+        <Drawer.Title className="modal-title">{title}</Drawer.Title>
+        <Drawer.Close asChild><Button variant="ghost" className="modal-close" aria-label="Cerrar"><X/></Button></Drawer.Close>
+      </div>
+      <div className="modal-body">{children}</div>
     </Drawer.Content></Drawer.Portal>
   </Drawer.Root>
   return <Dialog.Root open={open} onOpenChange={onOpenChange}><Dialog.Portal>
     <Dialog.Overlay className="modal-overlay"/><Dialog.Content className="modal-sheet" aria-labelledby={id} aria-describedby={undefined}>
-      <Dialog.Title id={id} className="modal-title">{title}</Dialog.Title>{children}
-      <Dialog.Close asChild><Button variant="ghost" className="modal-close" aria-label="Cerrar"><X/></Button></Dialog.Close>
+      <div className="modal-header">
+        <Dialog.Title id={id} className="modal-title">{title}</Dialog.Title>
+        <Dialog.Close asChild><Button variant="ghost" className="modal-close" aria-label="Cerrar"><X/></Button></Dialog.Close>
+      </div>
+      <div className="modal-body">{children}</div>
     </Dialog.Content>
   </Dialog.Portal></Dialog.Root>
 }
