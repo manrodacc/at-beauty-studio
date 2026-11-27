@@ -6,6 +6,7 @@ import {
   motion, MotionConfig,
   useMotionValue, useMotionValueEvent,
   useScroll, useSpring, useTransform,
+  type MotionValue,
 } from 'motion/react'
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
@@ -435,6 +436,140 @@ function ScrollCarousel({ animated, onReserveCategory }: { animated: boolean; on
   return <ScrollCarouselContent key={categories.map(category => category.id).join(':')} animated={animated} categories={categories} onReserveCategory={onReserveCategory}/>
 }
 
+type CatalogCategory = NonNullable<ReturnType<typeof useCatalogoCategorias>['data']>[number]
+
+function ScrollSlide({
+  category,
+  index,
+  total,
+  active,
+  progress,
+  animated,
+  onReserveCategory,
+}: {
+  category: CatalogCategory
+  index: number
+  total: number
+  active: boolean
+  progress: MotionValue<number>
+  animated: boolean
+  onReserveCategory: (id: number) => void
+}) {
+  const extra = Math.max(1, total - 1)
+  const center = total > 1 ? index / extra : 0
+  const span = total > 1 ? 1 / extra : 1
+  const range: [number, number, number] = [center - span, center, center + span]
+
+  const mediaScale = useTransform(progress, range, [0.9, 1, 0.9])
+  const mediaY = useTransform(progress, range, [22, 0, -22])
+  const ringX = useTransform(progress, range, [28, 0, -28])
+  const ringRotate = useTransform(progress, range, [-5, 2.5, 8])
+  const copyY = useTransform(progress, range, [30, 0, -20])
+  const copyOpacity = useTransform(progress, range, [0.18, 1, 0.18])
+
+  const tiltX = useMotionValue(0)
+  const tiltY = useMotionValue(0)
+  const smoothTiltX = useSpring(tiltX, { stiffness: 190, damping: 24 })
+  const smoothTiltY = useSpring(tiltY, { stiffness: 190, damping: 24 })
+
+  const servicesCount = category.servicios.length
+
+  return (
+    <div
+      className="ed-sc-slide"
+      aria-label={`${index + 1} de ${total}: ${category.nombre}`}
+      data-active={active}
+      inert={!active}
+    >
+      <div className="ed-sc-card">
+        {/* Framed editorial artwork with balanced sizing */}
+        <div
+          className="ed-sc-media-stage"
+          onPointerMove={event => {
+            if (!animated || event.pointerType !== 'mouse') return
+            const bounds = event.currentTarget.getBoundingClientRect()
+            tiltX.set(((event.clientX - bounds.left) / bounds.width - 0.5) * 14)
+            tiltY.set(((event.clientY - bounds.top) / bounds.height - 0.5) * 10)
+          }}
+          onPointerLeave={() => {
+            tiltX.set(0)
+            tiltY.set(0)
+          }}
+        >
+          <div className="ed-sc-glow" aria-hidden/>
+          <motion.div
+            className="ed-sc-frame-halo"
+            aria-hidden
+            style={animated && total > 1 ? { x: ringX, rotate: ringRotate } : undefined}
+          />
+          <motion.div
+            className="ed-sc-media-motion"
+            style={
+              animated
+                ? {
+                    scale: total > 1 ? mediaScale : 1,
+                    y: total > 1 ? mediaY : 0,
+                    x: smoothTiltX,
+                  }
+                : undefined
+            }
+          >
+            <motion.div className="ed-sc-img-wrap" style={animated ? { y: smoothTiltY } : undefined}>
+              <img
+                src={categoryPhoto(category)}
+                alt={category.nombre}
+                width="590"
+                height="570"
+                loading={index === 0 ? 'eager' : 'lazy'}
+                decoding="async"
+                className="ed-sc-img"
+                onError={event => {
+                  if (event.currentTarget.getAttribute('src') !== IMG + 'facial.webp') {
+                    event.currentTarget.src = IMG + 'facial.webp'
+                  }
+                }}
+              />
+            </motion.div>
+          </motion.div>
+          <div className="ed-sc-frame-badge" aria-hidden>
+            <span>{String(index + 1).padStart(2, '0')}</span>
+            <small>{servicesCount} {servicesCount === 1 ? 'servicio' : 'servicios'}</small>
+          </div>
+        </div>
+
+        {/* Editorial copy */}
+        <motion.div
+          className="ed-sc-copy"
+          style={animated && total > 1 ? { y: copyY, opacity: copyOpacity } : undefined}
+        >
+          <div className="ed-sc-eyebrow-row">
+            <span className="ed-sc-index" aria-hidden>{String(index + 1).padStart(2, '0')}</span>
+            <p className="ed-sc-label">Un momento para ti</p>
+          </div>
+          <h2 className="ed-sc-heading">{category.nombre}</h2>
+          {category.descripcion && <p className="ed-sc-name">{category.descripcion}</p>}
+          <p className="ed-sc-count">
+            <span aria-hidden>✦</span> {servicesCount} {servicesCount === 1 ? 'servicio para descubrir' : 'servicios para descubrir'}
+          </p>
+          <div className="ed-sc-actions">
+            <button
+              type="button"
+              className="ed-sc-cta"
+              aria-label={'Reservar ' + category.nombre}
+              onClick={() => onReserveCategory(category.id)}
+              tabIndex={active ? 0 : -1}
+            >
+              Reservar
+              <span aria-hidden>→</span>
+            </button>
+          </div>
+          <p className="ed-sc-note">Elige primero tu servicio y después crea tu cuenta.</p>
+        </motion.div>
+      </div>
+    </div>
+  )
+}
+
 function ScrollCarouselContent({ animated, categories, onReserveCategory }: { animated: boolean; categories: NonNullable<ReturnType<typeof useCatalogoCategorias>['data']>; onReserveCategory: (id: number) => void }) {
   const outerRef  = useRef<HTMLElement>(null)
   const trackRef  = useRef<HTMLDivElement>(null)
@@ -445,8 +580,8 @@ function ScrollCarouselContent({ animated, categories, onReserveCategory }: { an
     offset: ['start start', 'end end'],
   })
 
-  /* Smooth the raw progress */
-  const smooth = useSpring(scrollYProgress, { stiffness: 80, damping: 22, restDelta: .0005 })
+  /* Responsive yet silky spring for scroll scrubbing */
+  const smooth = useSpring(scrollYProgress, { stiffness: 120, damping: 24, restDelta: .0005 })
 
   /* How many extra slides beyond first */
   const count = categories.length
@@ -454,6 +589,7 @@ function ScrollCarouselContent({ animated, categories, onReserveCategory }: { an
 
   /* Translate the track in %: each slide = 100vw */
   const xPct = useTransform(smooth, [0, 1], ['0%', `-${extra * 100}%`])
+  const auraX = useTransform(smooth, [0, 1], ['15%', '-15%'])
 
   /* Active index for dots / caption */
   useMotionValueEvent(scrollYProgress, 'change', v => {
@@ -472,20 +608,25 @@ function ScrollCarouselContent({ animated, categories, onReserveCategory }: { an
       ref={outerRef}
       className="ed-scroll-carousel-outer"
       aria-label="Galería de servicios"
-      /* Height = 100vh per slide so scroll drives the whole journey */
       style={{ height: `${count * 100}svh` }}
     >
       {/* ── Sticky viewport ───────────────────── */}
       <div className="ed-scroll-carousel-sticky">
+        <motion.div className="ed-sc-ambient" aria-hidden style={animated ? { x: auraX } : undefined}/>
 
-        {/* Top label */}
+        {/* Top architectural header bar */}
         <div className="ed-sc-header">
           <p className="ed-kicker">Encuentra tu próximo cuidado</p>
-          <span className="ed-sc-counter" aria-live="polite" aria-atomic>
-            <em>{String(active + 1).padStart(2, '0')}</em>
-            <span>/</span>
-            {String(count).padStart(2, '0')}
-          </span>
+          <div className="ed-sc-header-right">
+            <div className="ed-sc-progress-rail" aria-hidden>
+              <motion.span style={animated ? { scaleX: smooth } : { scaleX: extra ? active / extra : 1 }}/>
+            </div>
+            <span className="ed-sc-counter" aria-live="polite" aria-atomic>
+              <em>{String(active + 1).padStart(2, '0')}</em>
+              <span>/</span>
+              {String(count).padStart(2, '0')}
+            </span>
+          </div>
         </div>
 
         {/* ── Track ─────────────────────────── */}
@@ -496,63 +637,36 @@ function ScrollCarouselContent({ animated, categories, onReserveCategory }: { an
           aria-label="Diapositivas de servicios"
         >
           {categories.map((category, i) => (
-            <div
+            <ScrollSlide
               key={category.id}
-              className="ed-sc-slide"
-              aria-label={`${i + 1} de ${count}: ${category.nombre}`}
-              data-active={active === i}
-              inert={active !== i}
-            >
-              <div className="ed-sc-card">
-              <div className="ed-sc-img-wrap">
-                <img
-                  src={categoryPhoto(category)}
-                  alt={category.nombre}
-                  width="1280" height="853"
-                  loading={i === 0 ? 'eager' : 'lazy'}
-                  decoding="async"
-                  className="ed-sc-img"
-                  onError={event => { if (event.currentTarget.getAttribute('src') !== IMG + 'facial.webp') event.currentTarget.src = IMG + 'facial.webp' }}
-                />
-              </div>
-
-              {/* Slide copy */}
-              <div className="ed-sc-copy">
-                <p className="ed-sc-index" aria-hidden>{String(i + 1).padStart(2, '0')}</p>
-                <p className="ed-sc-label">Un momento para ti</p>
-                <h2 className="ed-sc-heading">{category.nombre}</h2>
-                <p className="ed-sc-name">{category.descripcion}</p>
-                <p className="ed-sc-count">{category.servicios.length} {category.servicios.length === 1 ? 'servicio para descubrir' : 'servicios para descubrir'}</p>
-                <button
-                  type="button"
-                  className="ed-sc-cta"
-                  aria-label={'Reservar ' + category.nombre}
-                  onClick={() => onReserveCategory(category.id)}
-                  tabIndex={active === i ? 0 : -1}
-                >
-                  Reservar
-                  <span aria-hidden>→</span>
-                </button>
-                <p className="ed-sc-note">Elige primero tu servicio y después crea tu cuenta.</p>
-              </div>
-              </div>
-            </div>
+              category={category}
+              index={i}
+              total={count}
+              active={active === i}
+              progress={smooth}
+              animated={animated}
+              onReserveCategory={onReserveCategory}
+            />
           ))}
         </motion.div>
 
-        {/* ── Progress dots ─────────────────── */}
-        <div className="ed-sc-dots" aria-label="Ir a categoría">
-          {categories.map((category, i) => (
-            <button
-              key={category.id}
-              type="button"
-              aria-pressed={active === i}
-              aria-label={category.nombre}
-              className="ed-sc-dot"
-              data-active={active === i}
-              onClick={() => scrollToCategory(i)}
-            />
-          ))}
+        {/* ── Bottom navigation rail ────────── */}
+        <div className="ed-sc-footer-bar">
+          <div className="ed-sc-dots" aria-label="Ir a categoría">
+            {categories.map((category, i) => (
+              <button
+                key={category.id}
+                type="button"
+                aria-pressed={active === i}
+                aria-label={category.nombre}
+                className="ed-sc-dot"
+                data-active={active === i}
+                onClick={() => scrollToCategory(i)}
+              >
+                <span className="ed-sc-dot-label">{category.nombre}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* ── Scroll hint (first slide only) ── */}
